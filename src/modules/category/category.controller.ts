@@ -38,7 +38,7 @@ export const updateCategory = async (c: Context) => {
         const id = c.req.param("id");
         const body = await c.req.json();
         const category = await Category.findByIdAndUpdate(id, body, {
-            new: true,
+            returnDocument: "after",
             runValidators: true,
         });
         if (!category) {

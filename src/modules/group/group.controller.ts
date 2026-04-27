@@ -38,7 +38,7 @@ export const updateGroup = async (c: Context) => {
         const id = c.req.param("id");
         const body = await c.req.json();
         const group = await Group.findByIdAndUpdate(id, body, {
-            new: true,
+            returnDocument: "after",
             runValidators: true,
         });
         if (!group) {

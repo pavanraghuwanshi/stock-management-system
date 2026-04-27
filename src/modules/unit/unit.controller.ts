@@ -38,7 +38,7 @@ export const updateUnit = async (c: Context) => {
         const id = c.req.param("id");
         const body = await c.req.json();
         const unit = await Unit.findByIdAndUpdate(id, body, {
-            new: true,
+            returnDocument: "after",
             runValidators: true,
         });
         if (!unit) {
