@@ -13,8 +13,22 @@ export const createVendor = async (c: Context) => {
 
 export const getVendors = async (c: Context) => {
     try {
-        const vendors = await Vendor.find().populate("itemId").sort({ createdAt: -1 });
-        return c.json({ success: true, data: vendors });
+        const page = Number(c.req.query("page")) || 1;
+        const limit = Number(c.req.query("limit")) || 10;
+        const skip = (page - 1) * limit;
+
+        const total = await Vendor.countDocuments();
+        const vendors = await Vendor.find().populate("itemId").skip(skip).limit(limit).sort({ createdAt: -1 });
+
+        return c.json({
+            success: true,
+            data: vendors,
+            pagination: {
+                total,
+                page,
+                limit,
+            },
+        });
     } catch (error: any) {
         return c.json({ success: false, message: error.message }, 500);
     }

@@ -13,8 +13,26 @@ export const createSubGroup = async (c: Context) => {
 
 export const getSubGroups = async (c: Context) => {
     try {
-        const subGroups = await SubGroup.find().populate("groupId", "name").sort({ createdAt: -1 });
-        return c.json({ success: true, data: subGroups });
+        const page = Number(c.req.query("page")) || 1;
+        const limit = Number(c.req.query("limit")) || 10;
+        const skip = (page - 1) * limit;
+
+        const total = await SubGroup.countDocuments();
+        const subGroups = await SubGroup.find()
+            .populate("groupId", "name")
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 });
+
+        return c.json({
+            success: true,
+            data: subGroups,
+            pagination: {
+                total,
+                page,
+                limit,
+            },
+        });
     } catch (error: any) {
         return c.json({ success: false, message: error.message }, 500);
     }

@@ -13,8 +13,22 @@ export const createUnit = async (c: Context) => {
 
 export const getUnits = async (c: Context) => {
     try {
-        const units = await Unit.find().sort({ createdAt: -1 });
-        return c.json({ success: true, data: units });
+        const page = Number(c.req.query("page")) || 1;
+        const limit = Number(c.req.query("limit")) || 10;
+        const skip = (page - 1) * limit;
+
+        const total = await Unit.countDocuments();
+        const units = await Unit.find().skip(skip).limit(limit).sort({ createdAt: -1 });
+
+        return c.json({
+            success: true,
+            data: units,
+            pagination: {
+                total,
+                page,
+                limit,
+            },
+        });
     } catch (error: any) {
         return c.json({ success: false, message: error.message }, 500);
     }

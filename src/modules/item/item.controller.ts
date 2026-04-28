@@ -13,13 +13,29 @@ export const createItem = async (c: Context) => {
 
 export const getItems = async (c: Context) => {
     try {
+        const page = Number(c.req.query("page")) || 1;
+        const limit = Number(c.req.query("limit")) || 10;
+        const skip = (page - 1) * limit;
+
+        const total = await Item.countDocuments();
         const items = await Item.find()
             .populate("unitId")
             .populate("groupId")
             .populate("subGroupId")
             .populate("categoryId")
+            .skip(skip)
+            .limit(limit)
             .sort({ createdAt: -1 });
-        return c.json({ success: true, data: items });
+
+        return c.json({
+            success: true,
+            data: items,
+            pagination: {
+                total,
+                page,
+                limit,
+            },
+        });
     } catch (error: any) {
         return c.json({ success: false, message: error.message }, 500);
     }

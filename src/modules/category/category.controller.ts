@@ -13,8 +13,26 @@ export const createCategory = async (c: Context) => {
 
 export const getCategories = async (c: Context) => {
     try {
-        const categories = await Category.find().populate("groupIds", "name").sort({ createdAt: -1 });
-        return c.json({ success: true, data: categories });
+        const page = Number(c.req.query("page")) || 1;
+        const limit = Number(c.req.query("limit")) || 10;
+        const skip = (page - 1) * limit;
+
+        const total = await Category.countDocuments();
+        const categories = await Category.find()
+            .populate("groupIds", "name")
+            .skip(skip)
+            .limit(limit)
+            .sort({ createdAt: -1 });
+
+        return c.json({
+            success: true,
+            data: categories,
+            pagination: {
+                total,
+                page,
+                limit,
+            },
+        });
     } catch (error: any) {
         return c.json({ success: false, message: error.message }, 500);
     }
