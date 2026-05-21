@@ -15,7 +15,7 @@ const app = new Hono();
 //     if (!origin) return origin; // allow Postman / server calls
 //     return allowedOrigins.includes(origin) ? origin : "";
 //   },
-//   credentials: true,
+//   cr edentials: true,
 // }));
 
 app.use("*", cors());
