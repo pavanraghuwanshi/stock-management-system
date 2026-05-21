@@ -9,7 +9,7 @@ await connectDB();
 
 serve({
   fetch: app.fetch, 
-  port: 5000,
+  port: 9090,
 });
 
 console.log("🚀 Server running on http://localhost:5000");
