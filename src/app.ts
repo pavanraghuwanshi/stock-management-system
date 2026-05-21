@@ -7,8 +7,6 @@ const app = new Hono();
 
 
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://goyal-enterprices.vercel.app",
   "*"
 ];
 
