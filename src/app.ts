@@ -18,7 +18,7 @@ const app = new Hono();
 //   credentials: true,
 // }));
 
-app.use(cors());
+app.use("*", cors());
 
 app.get("/", (c) => {
   return c.json({ message: "CRM API running 🚀" });
