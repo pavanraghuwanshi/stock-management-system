@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
 import routes from "./routes";
+import { organizationRoutes } from "./modules/Organization/organization.route";
+import { authRoutes } from "./modules/auth/auth.route";
 
 const app = new Hono();
 
@@ -34,6 +36,11 @@ app.use(
 );
 
 app.route("/api", routes);
+
+app.route("/api", organizationRoutes);
+
+
+app.route("/api", authRoutes);
 
 
 export default app;
