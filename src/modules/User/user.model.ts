@@ -44,16 +44,16 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    unitIds: [
+    nodeIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Unit",
+        ref: "BusinessNode",
       },
     ],
-
-    primaryUnitId: {
+    
+    primaryNodeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Unit",
+      ref: "BusinessNode",
       default: null,
     },
 

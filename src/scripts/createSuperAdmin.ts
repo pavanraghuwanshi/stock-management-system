@@ -66,11 +66,11 @@ const seedSuperAdmin = async () => {
           "role:update",
           "role:delete",
 
-          // unit
-          "unit:create",
-          "unit:view",
-          "unit:update",
-          "unit:delete",
+          // business Node
+          "node:create",
+          "node:view",
+          "node:update",
+          "node:delete",
 
           // organization
           "organization:create",
@@ -139,9 +139,9 @@ const seedSuperAdmin = async () => {
 
         roleId: superAdminRole._id,
 
-        unitIds: [],
+        nodeIds: [],
 
-        primaryUnitId: null,
+        primaryNodeId: null,
 
         reportsTo: null,
 

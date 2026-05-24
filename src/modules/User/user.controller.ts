@@ -1,9 +1,9 @@
 import type { Context } from "hono";
 import mongoose from "mongoose";
-import { User } from "../models/user.model";
-import { Role } from "../models/role.model";
-import { Unit } from "../models/unit.model";
-import { encryptPassword, decryptPassword } from "../utils/cryptoPassword";
+import { User } from "./user.model";
+import { Role } from "../roles/role.model";
+import { BusinessNode } from "../businessNode/businessNode.model";
+import { encryptPassword, decryptPassword } from "../../utils/crypto";
 
 const isValidObjectId = (id: any) => mongoose.Types.ObjectId.isValid(id);
 
@@ -29,8 +29,8 @@ export const createUser = async (c: Context) => {
       mobile,
       password,
       roleId,
-      unitIds = [],
-      primaryUnitId,
+      nodeIds = [],
+      primaryNodeId,
       reportsTo,
     } = body;
 
@@ -48,21 +48,21 @@ export const createUser = async (c: Context) => {
       return c.json({ success: false, message: "Invalid roleId" }, 400);
     }
 
-    if (primaryUnitId && !isValidObjectId(primaryUnitId)) {
-      return c.json({ success: false, message: "Invalid primaryUnitId" }, 400);
+    if (primaryNodeId && !isValidObjectId(primaryNodeId)) {
+      return c.json({ success: false, message: "Invalid primaryNodeId" }, 400);
     }
 
     if (reportsTo && !isValidObjectId(reportsTo)) {
       return c.json({ success: false, message: "Invalid reportsTo" }, 400);
     }
 
-    if (!Array.isArray(unitIds)) {
-      return c.json({ success: false, message: "unitIds must be array" }, 400);
+    if (!Array.isArray(nodeIds)) {
+      return c.json({ success: false, message: "nodeIds must be array" }, 400);
     }
 
-    for (const id of unitIds) {
+    for (const id of nodeIds) {
       if (!isValidObjectId(id)) {
-        return c.json({ success: false, message: "Invalid unitIds" }, 400);
+        return c.json({ success: false, message: "Invalid nodeIds" }, 400);
       }
     }
 
@@ -85,14 +85,14 @@ export const createUser = async (c: Context) => {
       return c.json({ success: false, message: "Role not found" }, 404);
     }
 
-    if (unitIds.length > 0) {
-      const unitsCount = await Unit.countDocuments({
-        _id: { $in: unitIds },
+    if (nodeIds.length > 0) {
+      const unitsCount = await BusinessNode.countDocuments({
+        _id: { $in: nodeIds },
         organizationId: creator.organizationId,
         isActive: true,
       });
 
-      if (unitsCount !== unitIds.length) {
+      if (unitsCount !== nodeIds.length) {
         return c.json(
           { success: false, message: "One or more units are invalid" },
           400
@@ -100,11 +100,11 @@ export const createUser = async (c: Context) => {
       }
     }
 
-    if (primaryUnitId && !unitIds.includes(primaryUnitId)) {
+    if (primaryNodeId && !nodeIds.includes(primaryNodeId)) {
       return c.json(
         {
           success: false,
-          message: "primaryUnitId must exist inside unitIds",
+          message: "primaryNodeId must exist inside nodeIds",
         },
         400
       );
@@ -137,16 +137,16 @@ export const createUser = async (c: Context) => {
       mobile: mobile || null,
       password: encryptedPassword,
       roleId,
-      unitIds,
-      primaryUnitId: primaryUnitId || null,
+      nodeIds,
+      primaryNodeId: primaryNodeId || null,
       reportsTo: reportsTo || null,
       ancestorUserIds,
     });
 
     const populatedUser = await User.findById(user._id)
       .populate("roleId", "name scope permissions")
-      .populate("unitIds", "name type")
-      .populate("primaryUnitId", "name type")
+      .populate("nodeIds", "name type")
+      .populate("primaryNodeId", "name type")
       .populate("reportsTo", "name email");
 
     return c.json(
@@ -180,8 +180,8 @@ export const getAllUsers = async (c: Context) => {
       organizationId: loggedInUser.organizationId,
     })
       .populate("roleId", "name scope permissions")
-      .populate("unitIds", "name type")
-      .populate("primaryUnitId", "name type")
+      .populate("nodeIds", "name type")
+      .populate("primaryNodeId", "name type")
       .populate("reportsTo", "name email")
       .sort({ createdAt: -1 });
 
@@ -211,8 +211,8 @@ export const getUserById = async (c: Context) => {
     })
       .select("+password")
       .populate("roleId", "name scope permissions")
-      .populate("unitIds", "name type")
-      .populate("primaryUnitId", "name type")
+      .populate("nodeIds", "name type")
+      .populate("primaryNodeId", "name type")
       .populate("reportsTo", "name email");
 
     if (!user) {
@@ -279,40 +279,40 @@ export const updateUser = async (c: Context) => {
       user.roleId = body.roleId;
     }
 
-    if (body.unitIds) {
-      if (!Array.isArray(body.unitIds)) {
-        return c.json({ success: false, message: "unitIds must be array" }, 400);
+    if (body.nodeIds) {
+      if (!Array.isArray(body.nodeIds)) {
+        return c.json({ success: false, message: "nodeIds must be array" }, 400);
       }
 
-      const unitsCount = await Unit.countDocuments({
-        _id: { $in: body.unitIds },
+      const unitsCount = await BusinessNode.countDocuments({
+        _id: { $in: body.nodeIds },
         organizationId: loggedInUser.organizationId,
         isActive: true,
       });
 
-      if (unitsCount !== body.unitIds.length) {
+      if (unitsCount !== body.nodeIds.length) {
         return c.json(
           { success: false, message: "One or more units are invalid" },
           400
         );
       }
 
-      user.unitIds = body.unitIds;
+      user.nodeIds = body.nodeIds;
     }
 
-    if (body.primaryUnitId !== undefined) {
-      if (body.primaryUnitId && !isValidObjectId(body.primaryUnitId)) {
-        return c.json({ success: false, message: "Invalid primaryUnitId" }, 400);
+    if (body.primaryNodeId !== undefined) {
+      if (body.primaryNodeId && !isValidObjectId(body.primaryNodeId)) {
+        return c.json({ success: false, message: "Invalid primaryNodeId" }, 400);
       }
 
-      if (body.primaryUnitId && !user.unitIds.map(String).includes(body.primaryUnitId)) {
+      if (body.primaryNodeId && !user.nodeIds.map(String).includes(body.primaryNodeId)) {
         return c.json(
-          { success: false, message: "primaryUnitId must exist inside unitIds" },
+          { success: false, message: "primaryNodeId must exist inside nodeIds" },
           400
         );
       }
 
-      user.primaryUnitId = body.primaryUnitId || null;
+      user.primaryNodeId = body.primaryNodeId || null;
     }
 
     if (body.reportsTo !== undefined) {
@@ -366,8 +366,8 @@ export const updateUser = async (c: Context) => {
 
     const updatedUser = await User.findById(user._id)
       .populate("roleId", "name scope permissions")
-      .populate("unitIds", "name type")
-      .populate("primaryUnitId", "name type")
+      .populate("nodeIds", "name type")
+      .populate("primaryNodeId", "name type")
       .populate("reportsTo", "name email");
 
     return c.json({
