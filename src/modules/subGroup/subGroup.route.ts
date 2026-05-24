@@ -6,8 +6,11 @@ import {
     updateSubGroup,
     deleteSubGroup,
 } from "./subGroup.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const subGroupRoutes = new Hono();
+
+subGroupRoutes.use("*", auth);
 
 subGroupRoutes.post("/", createSubGroup);
 subGroupRoutes.get("/", getSubGroups);

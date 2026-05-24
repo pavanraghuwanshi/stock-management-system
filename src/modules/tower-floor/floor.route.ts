@@ -6,8 +6,11 @@ import {
     updateFloor,
     deleteFloor,
 } from "./floor.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const floorRoutes = new Hono();
+
+floorRoutes.use("*", auth);
 
 floorRoutes.post("/", createFloor);
 floorRoutes.get("/", getFloors);

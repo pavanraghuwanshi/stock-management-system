@@ -6,8 +6,11 @@ import {
     updateOutside,
     deleteOutside,
 } from "./outside.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const outsideRoutes = new Hono();
+
+outsideRoutes.use("*", auth);
 
 outsideRoutes.post("/", createOutside);
 outsideRoutes.get("/", getOutsides);

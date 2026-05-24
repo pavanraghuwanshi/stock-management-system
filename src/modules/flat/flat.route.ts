@@ -6,8 +6,10 @@ import {
     updateFlat,
     deleteFlat,
 } from "./flat.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const flatRoutes = new Hono();
+flatRoutes.use("*", auth);
 
 flatRoutes.post("/", createFlat);
 flatRoutes.get("/", getFlats);

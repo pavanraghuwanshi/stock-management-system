@@ -6,8 +6,10 @@ import {
     updateGroup,
     deleteGroup,
 } from "./group.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const groupRoutes = new Hono();
+groupRoutes.use("*", auth);
 
 groupRoutes.post("/", createGroup);
 groupRoutes.get("/", getGroups);

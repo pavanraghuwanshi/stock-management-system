@@ -6,8 +6,11 @@ import {
     updateProject,
     deleteProject,
 } from "./project.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const projectRoutes = new Hono();
+
+projectRoutes.use("*", auth);
 
 projectRoutes.post("/", createProject);
 projectRoutes.get("/", getProjects);

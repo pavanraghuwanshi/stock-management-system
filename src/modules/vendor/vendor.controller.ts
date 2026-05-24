@@ -1,22 +1,10 @@
 import type { Context } from "hono";
 import mongoose from "mongoose";
 import { Vendor } from "./vendor.model";
+import { buildScopeFilter } from "../../utils/buildScopeFilter";
 
-const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
-
-const getAccessQuery = (user: any) => {
-  const query: any = {
-    organizationId: user.organizationId,
-  };
-
-  // CRM hierarchy logic
-  // admin / owner ko full org access
-  if (!["admin", "owner", "superAdmin"].includes(user.role)) {
-    query.ownerId = user.id || user._id;
-  }
-
-  return query;
-};
+const isMongoId = (id: string): boolean =>
+  mongoose.Types.ObjectId.isValid(id);
 
 const formatVendor = (vendor: any) => {
   const item: any = vendor.itemId;
@@ -41,7 +29,7 @@ const formatVendor = (vendor: any) => {
     ifscCode: vendor.ifscCode,
     status: vendor.status,
     itemId: item?._id || vendor.itemId,
-    itemName: item?.name || item?.itemName || "",
+    itemName: item?.itemName || item?.name || "",
     createdAt: vendor.createdAt,
     updatedAt: vendor.updatedAt,
   };
@@ -54,22 +42,13 @@ export const createVendor = async (c: Context) => {
 
     if (!body.vendorCode || !body.name || !body.itemId) {
       return c.json(
-        {
-          success: false,
-          message: "vendorCode, name and itemId are required",
-        },
+        { success: false, message: "vendorCode, name and itemId are required" },
         400
       );
     }
 
-    if (!isValidObjectId(body.itemId)) {
-      return c.json(
-        {
-          success: false,
-          message: "Invalid itemId",
-        },
-        400
-      );
+    if (!isMongoId(body.itemId)) {
+      return c.json({ success: false, message: "Invalid itemId" }, 400);
     }
 
     const exists = await Vendor.findOne({
@@ -79,10 +58,7 @@ export const createVendor = async (c: Context) => {
 
     if (exists) {
       return c.json(
-        {
-          success: false,
-          message: "Vendor code already exists",
-        },
+        { success: false, message: "Vendor code already exists" },
         409
       );
     }
@@ -90,8 +66,8 @@ export const createVendor = async (c: Context) => {
     const vendor = await Vendor.create({
       ...body,
       organizationId: user.organizationId,
-      ownerId: body.ownerId || user.id || user._id,
-      createdBy: user.id || user._id,
+      ownerId: user._id,
+      createdBy: user._id,
     });
 
     const populatedVendor = await Vendor.findById(vendor._id).populate("itemId");
@@ -112,6 +88,7 @@ export const createVendor = async (c: Context) => {
 export const getVendors = async (c: Context) => {
   try {
     const user = c.get("user");
+    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -121,7 +98,9 @@ export const getVendors = async (c: Context) => {
 
     const skip = (page - 1) * limit;
 
-    const query: any = getAccessQuery(user);
+    const query: any = {
+      ...scopeFilter,
+    };
 
     if (search) {
       query.$or = [
@@ -138,7 +117,7 @@ export const getVendors = async (c: Context) => {
     }
 
     if (itemId) {
-      if (!isValidObjectId(itemId)) {
+      if (!isMongoId(itemId)) {
         return c.json({ success: false, message: "Invalid itemId" }, 400);
       }
       query.itemId = itemId;
@@ -174,30 +153,20 @@ export const getVendors = async (c: Context) => {
 export const getVendorById = async (c: Context) => {
   try {
     const user = c.get("user");
+    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
-      return c.json(
-        {
-          success: false,
-          message: "Vendor id is required",
-        },
-        400
-      );
+      return c.json({ success: false, message: "Vendor id is required" }, 400);
     }
-    if (!isValidObjectId(id)) {
-        return c.json(
-          {
-            success: false,
-            message: "Invalid vendor id",
-          },
-          400
-        );
-      }
+
+    if (!isMongoId(id)) {
+      return c.json({ success: false, message: "Invalid vendor id" }, 400);
+    }
 
     const vendor = await Vendor.findOne({
       _id: id,
-      ...getAccessQuery(user),
+      ...scopeFilter,
     }).populate("itemId");
 
     if (!vendor) {
@@ -216,24 +185,19 @@ export const getVendorById = async (c: Context) => {
 export const updateVendor = async (c: Context) => {
   try {
     const user = c.get("user");
+    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
     const body = await c.req.json();
 
     if (!id) {
-        return c.json(
-          {
-            success: false,
-            message: "Vendor id is required",
-          },
-          400
-        );
-      }
+      return c.json({ success: false, message: "Vendor id is required" }, 400);
+    }
 
-    if (!isValidObjectId(id)) {
+    if (!isMongoId(id)) {
       return c.json({ success: false, message: "Invalid vendor id" }, 400);
     }
 
-    if (body.itemId && !isValidObjectId(body.itemId)) {
+    if (body.itemId && !isMongoId(body.itemId)) {
       return c.json({ success: false, message: "Invalid itemId" }, 400);
     }
 
@@ -246,23 +210,20 @@ export const updateVendor = async (c: Context) => {
 
       if (exists) {
         return c.json(
-          {
-            success: false,
-            message: "Vendor code already exists",
-          },
+          { success: false, message: "Vendor code already exists" },
           409
         );
       }
     }
 
     delete body.organizationId;
-    delete body.createdBy;
     delete body.ownerId;
+    delete body.createdBy;
 
     const vendor = await Vendor.findOneAndUpdate(
       {
         _id: id,
-        ...getAccessQuery(user),
+        ...scopeFilter,
       },
       body,
       {
@@ -288,25 +249,20 @@ export const updateVendor = async (c: Context) => {
 export const deleteVendor = async (c: Context) => {
   try {
     const user = c.get("user");
+    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
-        return c.json(
-          {
-            success: false,
-            message: "Vendor id is required",
-          },
-          400
-        );
-      }
+      return c.json({ success: false, message: "Vendor id is required" }, 400);
+    }
 
-    if (!isValidObjectId(id)) {
+    if (!isMongoId(id)) {
       return c.json({ success: false, message: "Invalid vendor id" }, 400);
     }
 
     const vendor = await Vendor.findOneAndDelete({
       _id: id,
-      ...getAccessQuery(user),
+      ...scopeFilter,
     });
 
     if (!vendor) {

@@ -6,8 +6,11 @@ import {
     updateItem,
     deleteItem,
 } from "./item.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const itemRoutes = new Hono();
+
+itemRoutes.use("*", auth);
 
 itemRoutes.post("/", createItem);
 itemRoutes.get("/", getItems);

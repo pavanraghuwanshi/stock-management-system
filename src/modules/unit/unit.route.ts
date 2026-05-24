@@ -6,8 +6,10 @@ import {
     updateUnit,
     deleteUnit,
 } from "./unit.controller";
+import { auth } from "../../middleware/auth.middleware";
 
 const unitRoutes = new Hono();
+unitRoutes.use("*", auth);
 
 unitRoutes.post("/", createUnit);
 unitRoutes.get("/", getUnits);
