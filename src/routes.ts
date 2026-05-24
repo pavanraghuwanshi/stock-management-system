@@ -17,6 +17,7 @@ import { organizationRoutes } from "./modules/Organization/organization.route";
 import { roleRoutes } from "./modules/roles/role.route";
 import { businessNodeRoutes } from "./modules/businessNode/businessNode.route";
 import { userRoutes } from "./modules/User/user.route";
+import { taskRoutes } from "./modules/task/task.route";
 
 const routes = new Hono();
 
@@ -38,6 +39,7 @@ routes.route("/track-assets", trackAssetRoutes);
 routes.route("/user", userRoutes);
 routes.route("/role", roleRoutes);
 routes.route("/business-nodes", businessNodeRoutes);
+routes.route("/task", taskRoutes );
 
 
 routes.route("/organizations", organizationRoutes);
