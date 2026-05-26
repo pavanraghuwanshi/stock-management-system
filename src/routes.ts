@@ -19,6 +19,7 @@ import { businessNodeRoutes } from "./modules/businessNode/businessNode.route";
 import { userRoutes } from "./modules/User/user.route";
 import { taskRoutes } from "./modules/task/task.route";
 import geofenceRoutes from "./modules/geofence/geofence.route";
+import liveTrackRoutes from "./modules/liveTrack/liveTrack.route";
 
 const routes = new Hono();
 
@@ -42,6 +43,7 @@ routes.route("/role", roleRoutes);
 routes.route("/business-nodes", businessNodeRoutes);
 routes.route("/task", taskRoutes );
 routes.route("/geofence", geofenceRoutes );
+routes.route("/live-track", liveTrackRoutes );
 
 
 routes.route("/organizations", organizationRoutes);
