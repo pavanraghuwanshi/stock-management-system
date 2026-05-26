@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import mongoose from "mongoose";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
 import { User } from "./user.model";
 import { Role } from "../roles/role.model";
 import { BusinessNode } from "../businessNode/businessNode.model";
@@ -18,21 +20,64 @@ const cleanUser = (user: any, showPassword = false) => {
   return obj;
 };
 
+const getStringValue = (value: any) => {
+  if (Array.isArray(value)) return value[0] ? String(value[0]) : "";
+  return value ? String(value) : "";
+};
+
+const getNodeIdsFromBody = (body: any) => {
+  const rawNodeIds = body["nodeIds[]"] || body.nodeIds || [];
+
+  if (Array.isArray(rawNodeIds)) {
+    return rawNodeIds.map(String).filter(Boolean);
+  }
+
+  if (rawNodeIds) {
+    return [String(rawNodeIds)];
+  }
+
+  return [];
+};
+
+const saveProfileImage = async (file: any) => {
+  if (!(file instanceof File)) return null;
+
+  const uploadDir = "uploads/profile-images";
+  await mkdir(uploadDir, { recursive: true });
+
+  const ext = path.extname(file.name);
+  const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+  const filePath = path.join(uploadDir, fileName);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await writeFile(filePath, buffer);
+
+  return `/${filePath.replace(/\\/g, "/")}`;
+};
+
 export const createUser = async (c: Context) => {
   try {
     const creator = c.get("user");
-    const body = await c.req.json();
+    const body = await c.req.parseBody();
 
-    const {
-      name,
-      email,
-      mobile,
-      password,
-      roleId,
-      nodeIds = [],
-      primaryNodeId,
-      reportsTo,
-    } = body;
+    const name = getStringValue(body.name);
+    const email = getStringValue(body.email);
+    const mobile = getStringValue(body.mobile);
+    const password = getStringValue(body.password);
+    const roleId = getStringValue(body.roleId);
+    const primaryNodeId = getStringValue(body.primaryNodeId);
+    const reportsTo = getStringValue(body.reportsTo);
+
+    const geofenceId = getStringValue(body.geofenceId);
+    const projectId = getStringValue(body.projectId);
+    const attendancePolicyId = getStringValue(body.attendancePolicyId);
+
+    const nodeIds = getNodeIdsFromBody(body);
+
+    const uploadedProfileImage =
+      (await saveProfileImage(body.profileImage)) ||
+      getStringValue(body.profileImage) ||
+      null;
 
     if (!name || !email || !password || !roleId) {
       return c.json(
@@ -43,6 +88,7 @@ export const createUser = async (c: Context) => {
         400
       );
     }
+    
 
     if (!isValidObjectId(roleId)) {
       return c.json({ success: false, message: "Invalid roleId" }, 400);
@@ -56,8 +102,19 @@ export const createUser = async (c: Context) => {
       return c.json({ success: false, message: "Invalid reportsTo" }, 400);
     }
 
-    if (!Array.isArray(nodeIds)) {
-      return c.json({ success: false, message: "nodeIds must be array" }, 400);
+    if (geofenceId && !isValidObjectId(geofenceId)) {
+      return c.json({ success: false, message: "Invalid geofenceId" }, 400);
+    }
+
+    if (projectId && !isValidObjectId(projectId)) {
+      return c.json({ success: false, message: "Invalid projectId" }, 400);
+    }
+
+    if (attendancePolicyId && !isValidObjectId(attendancePolicyId)) {
+      return c.json(
+        { success: false, message: "Invalid attendancePolicyId" },
+        400
+      );
     }
 
     for (const id of nodeIds) {
@@ -100,7 +157,7 @@ export const createUser = async (c: Context) => {
       }
     }
 
-    if (primaryNodeId && !nodeIds.includes(primaryNodeId)) {
+    if (primaryNodeId && !nodeIds.map(String).includes(String(primaryNodeId))) {
       return c.json(
         {
           success: false,
@@ -120,7 +177,10 @@ export const createUser = async (c: Context) => {
       });
 
       if (!parentUser) {
-        return c.json({ success: false, message: "Reporting user not found" }, 404);
+        return c.json(
+          { success: false, message: "Reporting user not found" },
+          404
+        );
       }
     }
 
@@ -141,13 +201,21 @@ export const createUser = async (c: Context) => {
       primaryNodeId: primaryNodeId || null,
       reportsTo: reportsTo || null,
       ancestorUserIds,
+
+      geofenceId: geofenceId || null,
+      projectId: projectId || null,
+      profileImage: uploadedProfileImage,
+      attendancePolicyId: attendancePolicyId || null,
     });
 
     const populatedUser = await User.findById(user._id)
       .populate("roleId", "name scope permissions")
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
-      .populate("reportsTo", "name email");
+      .populate("reportsTo", "name email")
+      .populate("geofenceId", "name")
+      .populate("projectId", "name")
+      .populate("attendancePolicyId", "name");
 
     return c.json(
       {
@@ -183,6 +251,9 @@ export const getAllUsers = async (c: Context) => {
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
       .populate("reportsTo", "name email")
+      .populate("geofenceId", "name")
+      .populate("projectId", "name")
+      .populate("attendancePolicyId", "name")
       .sort({ createdAt: -1 });
 
     return c.json({
@@ -213,7 +284,10 @@ export const getUserById = async (c: Context) => {
       .populate("roleId", "name scope permissions")
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
-      .populate("reportsTo", "name email");
+      .populate("reportsTo", "name email")
+      .populate("geofenceId", "name")
+      .populate("projectId", "name")
+      .populate("attendancePolicyId", "name");
 
     if (!user) {
       return c.json({ success: false, message: "User not found" }, 404);
@@ -232,7 +306,7 @@ export const updateUser = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
     const id = c.req.param("id");
-    const body = await c.req.json();
+    const body = await c.req.parseBody();
 
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid user id" }, 400);
@@ -247,27 +321,35 @@ export const updateUser = async (c: Context) => {
       return c.json({ success: false, message: "User not found" }, 404);
     }
 
-    if (body.email) {
+    const email = getStringValue(body.email);
+    const roleId = getStringValue(body.roleId);
+    const primaryNodeId = getStringValue(body.primaryNodeId);
+    const reportsTo = getStringValue(body.reportsTo);
+    const geofenceId = getStringValue(body.geofenceId);
+    const projectId = getStringValue(body.projectId);
+    const attendancePolicyId = getStringValue(body.attendancePolicyId);
+
+    if (email) {
       const emailExists = await User.findOne({
         _id: { $ne: id },
         organizationId: loggedInUser.organizationId,
-        email: body.email.toLowerCase(),
+        email: email.toLowerCase(),
       });
 
       if (emailExists) {
         return c.json({ success: false, message: "Email already exists" }, 409);
       }
 
-      user.email = body.email.toLowerCase();
+      user.email = email.toLowerCase();
     }
 
-    if (body.roleId) {
-      if (!isValidObjectId(body.roleId)) {
+    if (roleId) {
+      if (!isValidObjectId(roleId)) {
         return c.json({ success: false, message: "Invalid roleId" }, 400);
       }
 
       const role = await Role.findOne({
-        _id: body.roleId,
+        _id: roleId,
         organizationId: loggedInUser.organizationId,
         isActive: true,
       });
@@ -276,51 +358,58 @@ export const updateUser = async (c: Context) => {
         return c.json({ success: false, message: "Role not found" }, 404);
       }
 
-      user.roleId = body.roleId;
+      user.roleId = roleId as any;
     }
 
-    if (body.nodeIds) {
-      if (!Array.isArray(body.nodeIds)) {
-        return c.json({ success: false, message: "nodeIds must be array" }, 400);
+    if (body["nodeIds[]"] !== undefined || body.nodeIds !== undefined) {
+      const nodeIds = getNodeIdsFromBody(body);
+
+      for (const nodeId of nodeIds) {
+        if (!isValidObjectId(nodeId)) {
+          return c.json({ success: false, message: "Invalid nodeIds" }, 400);
+        }
       }
 
       const unitsCount = await BusinessNode.countDocuments({
-        _id: { $in: body.nodeIds },
+        _id: { $in: nodeIds },
         organizationId: loggedInUser.organizationId,
         isActive: true,
       });
 
-      if (unitsCount !== body.nodeIds.length) {
+      if (unitsCount !== nodeIds.length) {
         return c.json(
           { success: false, message: "One or more units are invalid" },
           400
         );
       }
 
-      user.nodeIds = body.nodeIds;
+      user.nodeIds = nodeIds as any;
     }
 
     if (body.primaryNodeId !== undefined) {
-      if (body.primaryNodeId && !isValidObjectId(body.primaryNodeId)) {
+      if (primaryNodeId && !isValidObjectId(primaryNodeId)) {
         return c.json({ success: false, message: "Invalid primaryNodeId" }, 400);
       }
 
-      if (body.primaryNodeId && !user.nodeIds.map(String).includes(body.primaryNodeId)) {
+      if (
+        primaryNodeId &&
+        !user.nodeIds.map(String).includes(String(primaryNodeId))
+      ) {
         return c.json(
           { success: false, message: "primaryNodeId must exist inside nodeIds" },
           400
         );
       }
 
-      user.primaryNodeId = body.primaryNodeId || null;
+      user.primaryNodeId = (primaryNodeId || null) as any;
     }
 
     if (body.reportsTo !== undefined) {
-      if (body.reportsTo && !isValidObjectId(body.reportsTo)) {
+      if (reportsTo && !isValidObjectId(reportsTo)) {
         return c.json({ success: false, message: "Invalid reportsTo" }, 400);
       }
 
-      if (body.reportsTo && body.reportsTo === id) {
+      if (reportsTo && reportsTo === id) {
         return c.json(
           { success: false, message: "User cannot report to himself" },
           400
@@ -329,15 +418,18 @@ export const updateUser = async (c: Context) => {
 
       let parentUser: any = null;
 
-      if (body.reportsTo) {
+      if (reportsTo) {
         parentUser = await User.findOne({
-          _id: body.reportsTo,
+          _id: reportsTo,
           organizationId: loggedInUser.organizationId,
           isActive: true,
         });
 
         if (!parentUser) {
-          return c.json({ success: false, message: "Reporting user not found" }, 404);
+          return c.json(
+            { success: false, message: "Reporting user not found" },
+            404
+          );
         }
 
         if (parentUser.ancestorUserIds.map(String).includes(id)) {
@@ -348,19 +440,57 @@ export const updateUser = async (c: Context) => {
         }
       }
 
-      user.reportsTo = body.reportsTo || null;
+      user.reportsTo = (reportsTo || null) as any;
       user.ancestorUserIds = parentUser
         ? [...parentUser.ancestorUserIds, parentUser._id]
         : [];
     }
 
-    if (body.password) {
-      user.password = encryptPassword(body.password) as any;
+    if (body.geofenceId !== undefined) {
+      if (geofenceId && !isValidObjectId(geofenceId)) {
+        return c.json({ success: false, message: "Invalid geofenceId" }, 400);
+      }
+
+      user.geofenceId = (geofenceId || null) as any;
     }
 
-    if (body.name !== undefined) user.name = body.name;
-    if (body.mobile !== undefined) user.mobile = body.mobile || null;
-    if (body.isActive !== undefined) user.isActive = body.isActive;
+    if (body.projectId !== undefined) {
+      if (projectId && !isValidObjectId(projectId)) {
+        return c.json({ success: false, message: "Invalid projectId" }, 400);
+      }
+
+      user.projectId = (projectId || null) as any;
+    }
+
+    if (body.attendancePolicyId !== undefined) {
+      if (attendancePolicyId && !isValidObjectId(attendancePolicyId)) {
+        return c.json(
+          { success: false, message: "Invalid attendancePolicyId" },
+          400
+        );
+      }
+
+      user.attendancePolicyId = (attendancePolicyId || null) as any;
+    }
+
+    if (body.profileImage !== undefined) {
+      user.profileImage =
+        (await saveProfileImage(body.profileImage)) ||
+        getStringValue(body.profileImage) ||
+        null;
+    }
+
+    const password = getStringValue(body.password);
+    const name = getStringValue(body.name);
+    const mobile = getStringValue(body.mobile);
+
+    if (password) {
+      user.password = encryptPassword(password) as any;
+    }
+
+    if (body.name !== undefined) user.name = name;
+    if (body.mobile !== undefined) user.mobile = mobile || null;
+    if (body.isActive !== undefined) user.isActive = body.isActive === "true";
 
     await user.save();
 
@@ -368,7 +498,10 @@ export const updateUser = async (c: Context) => {
       .populate("roleId", "name scope permissions")
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
-      .populate("reportsTo", "name email");
+      .populate("reportsTo", "name email")
+      .populate("geofenceId", "name")
+      .populate("projectId", "name")
+      .populate("attendancePolicyId", "name");
 
     return c.json({
       success: true,

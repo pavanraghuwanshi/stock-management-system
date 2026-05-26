@@ -30,6 +30,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+      unique:true
     },
 
     password: {
@@ -50,7 +51,7 @@ const userSchema = new mongoose.Schema(
         ref: "BusinessNode",
       },
     ],
-    
+
     primaryNodeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BusinessNode",
@@ -69,6 +70,29 @@ const userSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+
+    geofenceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Geofence",
+      default: null,
+    },
+
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      default: null,
+    },
+
+    profileImage: {
+      type: String,
+      default: null,
+    },
+
+    attendancePolicyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AttendancePolicy",
+      default: null,
+    },
 
     isActive: { type: Boolean, default: true },
   },
