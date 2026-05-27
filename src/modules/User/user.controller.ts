@@ -6,6 +6,7 @@ import { User } from "./user.model";
 import { Role } from "../roles/role.model";
 import { BusinessNode } from "../businessNode/businessNode.model";
 import { encryptPassword, decryptPassword } from "../../utils/crypto";
+import { buildScopeFilter } from "../../utils/buildScopeFilter";
 
 const isValidObjectId = (id: any) => mongoose.Types.ObjectId.isValid(id);
 
@@ -239,14 +240,30 @@ export const createUser = async (c: Context) => {
     );
   }
 };
-
 export const getAllUsers = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
 
-    const users = await User.find({
-      organizationId: loggedInUser.organizationId,
-    })
+    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+    const userFilter: any = {
+      organizationId: scopeFilter.organizationId,
+    };
+
+    if (scopeFilter.ownerId?.$in) {
+      userFilter._id = { $in: scopeFilter.ownerId.$in };
+    } else if (scopeFilter.ownerId) {
+      userFilter._id = scopeFilter.ownerId;
+    }
+
+    if (scopeFilter.nodeId) {
+      userFilter.$or = [
+        { primaryNodeId: scopeFilter.nodeId },
+        { nodeIds: scopeFilter.nodeId },
+      ];
+    }
+
+    const users = await User.find(userFilter)
       .populate("roleId", "name scope permissions")
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
@@ -276,9 +293,28 @@ export const getUserById = async (c: Context) => {
       return c.json({ success: false, message: "Invalid user id" }, 400);
     }
 
+    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+    const userFilter: any = {
+      organizationId: scopeFilter.organizationId,
+    };
+
+    if (scopeFilter.ownerId?.$in) {
+      userFilter._id = { $in: scopeFilter.ownerId.$in };
+    } else if (scopeFilter.ownerId) {
+      userFilter._id = scopeFilter.ownerId;
+    }
+
+    if (scopeFilter.nodeId) {
+      userFilter.$or = [
+        { primaryNodeId: scopeFilter.nodeId },
+        { nodeIds: scopeFilter.nodeId },
+      ];
+    }
+
     const user = await User.findOne({
+      ...userFilter,
       _id: id,
-      organizationId: loggedInUser.organizationId,
     })
       .select("+password")
       .populate("roleId", "name scope permissions")
@@ -312,9 +348,28 @@ export const updateUser = async (c: Context) => {
       return c.json({ success: false, message: "Invalid user id" }, 400);
     }
 
+    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+    const userFilter: any = {
+      organizationId: scopeFilter.organizationId,
+    };
+
+    if (scopeFilter.ownerId?.$in) {
+      userFilter._id = { $in: scopeFilter.ownerId.$in };
+    } else if (scopeFilter.ownerId) {
+      userFilter._id = scopeFilter.ownerId;
+    }
+
+    if (scopeFilter.nodeId) {
+      userFilter.$or = [
+        { primaryNodeId: scopeFilter.nodeId },
+        { nodeIds: scopeFilter.nodeId },
+      ];
+    }
+
     const user = await User.findOne({
+      ...userFilter,
       _id: id,
-      organizationId: loggedInUser.organizationId,
     });
 
     if (!user) {
@@ -529,9 +584,28 @@ export const deleteUser = async (c: Context) => {
       );
     }
 
+    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+    const userFilter: any = {
+      organizationId: scopeFilter.organizationId,
+    };
+
+    if (scopeFilter.ownerId?.$in) {
+      userFilter._id = { $in: scopeFilter.ownerId.$in };
+    } else if (scopeFilter.ownerId) {
+      userFilter._id = scopeFilter.ownerId;
+    }
+
+    if (scopeFilter.nodeId) {
+      userFilter.$or = [
+        { primaryNodeId: scopeFilter.nodeId },
+        { nodeIds: scopeFilter.nodeId },
+      ];
+    }
+
     const user = await User.findOne({
+      ...userFilter,
       _id: id,
-      organizationId: loggedInUser.organizationId,
     });
 
     if (!user) {
