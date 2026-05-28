@@ -23,6 +23,7 @@ import liveTrackRoutes from "./modules/liveTrack/liveTrack.route";
 import attendancePolicyRoutes from "./modules/attendancePolicy/attendancePolicy.route";
 import indentRoutes from "./modules/IndentRequest/indent.route";
 import leaveRoutes from "./modules/leave/leave.route";
+import advanceRoutes from "./modules/advance/advance.route";
 
 const routes = new Hono();
 
@@ -54,5 +55,6 @@ routes.route("/organizations", organizationRoutes);
 routes.route("/indents", indentRoutes);
 routes.route("/auth", authRoutes);
 routes.route("/leaves", leaveRoutes);
+routes.route("/advances", advanceRoutes);
 
 export default routes;
