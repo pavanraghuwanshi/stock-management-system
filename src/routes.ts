@@ -22,6 +22,7 @@ import geofenceRoutes from "./modules/geofence/geofence.route";
 import liveTrackRoutes from "./modules/liveTrack/liveTrack.route";
 import attendancePolicyRoutes from "./modules/attendancePolicy/attendancePolicy.route";
 import indentRoutes from "./modules/IndentRequest/indent.route";
+import leaveRoutes from "./modules/leave/leave.route";
 
 const routes = new Hono();
 
@@ -52,5 +53,6 @@ routes.route("/live-track", liveTrackRoutes );
 routes.route("/organizations", organizationRoutes);
 routes.route("/indents", indentRoutes);
 routes.route("/auth", authRoutes);
+routes.route("/leaves", leaveRoutes);
 
 export default routes;
