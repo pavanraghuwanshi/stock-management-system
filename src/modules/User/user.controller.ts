@@ -352,9 +352,11 @@ export const updateUser = async (c: Context) => {
     const body = await c.req.parseBody();
 
     const organizationId =
-      loggedInUser.role === "superAdmin"
+    loggedInUser?.roleId?.name === "superAdmin"
         ? getStringValue(body.organizationId)
         : loggedInUser.organizationId;
+
+        console.log(organizationId,  loggedInUser.roleId?.name, body.organizationId);
 
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid user id" }, 400);
