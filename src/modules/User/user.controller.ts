@@ -270,7 +270,11 @@ export const getAllUsers = async (c: Context) => {
       ];
     }
 
-    const users = await User.find(userFilter)
+    const users = await User.find({
+      ...userFilter,
+      _id: { $ne: loggedInUser._id }, // exclude logged-in user
+    })
+      .select("+password")
       .populate("roleId", "name scope permissions")
       .populate("nodeIds", "name type")
       .populate("primaryNodeId", "name type")
@@ -280,13 +284,33 @@ export const getAllUsers = async (c: Context) => {
       .populate("attendancePolicyId", "name")
       .sort({ createdAt: -1 });
 
+    const usersWithPassword = users.map((user: any) => {
+      const userObj = user.toObject();
+
+      try {
+        if (userObj.password?.iv && userObj.password?.content) {
+          userObj.password = decryptPassword(userObj.password);
+        }
+      } catch (error) {
+        userObj.password = null;
+      }
+
+      return userObj;
+    });
+
     return c.json({
       success: true,
-      count: users.length,
-      data: users.map((u) => cleanUser(u)),
+      count: usersWithPassword.length,
+      data: usersWithPassword,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json(
+      {
+        success: false,
+        message: error.message,
+      },
+      400
+    );
   }
 };
 
@@ -642,14 +666,19 @@ export const deleteUser = async (c: Context) => {
       );
     }
 
-    user.isActive = false;
-    await user.save();
+    await user.deleteOne();
 
     return c.json({
       success: true,
       message: "User deleted successfully",
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json(
+      {
+        success: false,
+        message: error.message,
+      },
+      400
+    );
   }
 };
