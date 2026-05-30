@@ -75,9 +75,29 @@ export const createUser = async (c: Context) => {
 
     // ✅ ONLY ADDED THIS
     const organizationId =
-      creator.role === "superAdmin"
+      creator?.roleId?.name === "superAdmin"
         ? getStringValue(body.organizationId)
-        : creator.organizationId;
+        : String(creator.organizationId || "");
+
+    if (!organizationId) {
+      return c.json(
+        {
+          success: false,
+          message: "organizationId is required",
+        },
+        400
+      );
+    }
+
+    if (!isValidObjectId(organizationId)) {
+      return c.json(
+        {
+          success: false,
+          message: "Invalid organizationId",
+        },
+        400
+      );
+    }
 
     const nodeIds = getNodeIdsFromBody(body);
 
@@ -380,7 +400,6 @@ export const updateUser = async (c: Context) => {
         ? getStringValue(body.organizationId)
         : loggedInUser.organizationId;
 
-        console.log(organizationId,  loggedInUser.roleId?.name, body.organizationId);
 
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid user id" }, 400);
