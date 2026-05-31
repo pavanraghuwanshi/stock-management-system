@@ -116,7 +116,7 @@ const seedSuperAdmin = async () => {
     // CHECK SUPER USER
     // ---------------------------------------------------
 
-    const email = "raghukulboy@gmail.com";
+    const email = "admin@gmail.com";
 
     const existingUser = await User.findOne({
       organizationId: organization._id,
@@ -124,7 +124,7 @@ const seedSuperAdmin = async () => {
     });
 
     if (!existingUser) {
-      const encryptedPassword = encryptPassword("Anandraghuwanshi@1906");
+      const encryptedPassword = encryptPassword("123456");
 
       const user = await User.create({
         organizationId: organization._id,
@@ -158,7 +158,7 @@ const seedSuperAdmin = async () => {
 🚀 SUPER ADMIN LOGIN
 
 Email    : ${email}
-Password : Anandraghuwanshi@1906
+Password : 123456
 
 --------------------------------------------------
       `);
