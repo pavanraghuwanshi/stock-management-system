@@ -306,8 +306,11 @@ export const deleteAttendancePolicy = async (c: Context) => {
       );
     }
 
-    policy.isActive = false;
-    await policy.save();
+    // permanent delete
+    await AttendancePolicy.deleteOne({
+      _id: id,
+      organizationId: user.organizationId,
+    });
 
     return c.json({
       success: true,

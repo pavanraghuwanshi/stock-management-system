@@ -25,6 +25,7 @@ import indentRoutes from "./modules/IndentRequest/indent.route";
 import leaveRoutes from "./modules/leave/leave.route";
 import advanceRoutes from "./modules/advance/advance.route";
 import deviceRoutes from "./modules/loginDeviceInfo/loginDevice.route";
+import attendanceRoutes from "./modules/attendance/attendance.route";
 
 const routes = new Hono();
 
@@ -58,5 +59,6 @@ routes.route("/auth", authRoutes);
 routes.route("/leaves", leaveRoutes);
 routes.route("/advances", advanceRoutes);
 routes.route("/devices", deviceRoutes);
+routes.route("/attendance", attendanceRoutes);
 
 export default routes;
