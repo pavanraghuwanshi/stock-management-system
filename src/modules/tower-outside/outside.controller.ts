@@ -11,20 +11,20 @@ export const createOutside = async (c: Context) => {
     const user = c.get("user");
     const body = await c.req.json();
 
-    if (!body.outsideName || !body.towerId) {
+    if (!body.outsideName || !body.projectId) {
       return c.json(
-        { success: false, message: "outsideName and towerId are required" },
+        { success: false, message: "outsideName and projectId are required" },
         400
       );
     }
 
-    if (!isMongoId(body.towerId)) {
-      return c.json({ success: false, message: "Invalid towerId" }, 400);
+    if (!isMongoId(body.projectId)) {
+      return c.json({ success: false, message: "Invalid projectId" }, 400);
     }
 
     const exists = await Outside.findOne({
       organizationId: user.organizationId,
-      towerId: body.towerId,
+     projectId: body.projectId || null,
       outsideName: body.outsideName,
     });
 
@@ -46,7 +46,7 @@ export const createOutside = async (c: Context) => {
     });
 
     const populatedOutside = await Outside.findById(outside._id).populate(
-      "towerId",
+      "projectId",
       "towerName towerNumber"
     );
 
@@ -72,7 +72,7 @@ export const getOutsides = async (c: Context) => {
     const limit = Number(c.req.query("limit")) || 10;
     const search = c.req.query("search");
     const status = c.req.query("status");
-    const towerId = c.req.query("towerId");
+    const projectId = c.req.query("projectId");
 
     const skip = (page - 1) * limit;
 
@@ -87,17 +87,17 @@ export const getOutsides = async (c: Context) => {
 
     if (status) query.status = status;
 
-    if (towerId) {
-      if (!isMongoId(towerId)) {
-        return c.json({ success: false, message: "Invalid towerId" }, 400);
+    if (projectId) {
+      if (!isMongoId(projectId)) {
+        return c.json({ success: false, message: "Invalid projectId" }, 400);
       }
-      query.towerId = towerId;
+      query.projectId = projectId;
     }
 
     const total = await Outside.countDocuments(query);
 
     const outsides = await Outside.find(query)
-      .populate("towerId", "towerName towerNumber")
+      .populate("projectId", "towerName towerNumber")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
@@ -134,7 +134,7 @@ export const getOutsideById = async (c: Context) => {
     const outside = await Outside.findOne({
       _id: id,
       ...scopeFilter,
-    }).populate("towerId", "towerName towerNumber");
+    }).populate("projectId", "towerName towerNumber");
 
     if (!outside) {
       return c.json(
@@ -164,11 +164,11 @@ export const updateOutside = async (c: Context) => {
       return c.json({ success: false, message: "Invalid outside id" }, 400);
     }
 
-    if (body.towerId && !isMongoId(body.towerId)) {
-      return c.json({ success: false, message: "Invalid towerId" }, 400);
+    if (body.projectId && !isMongoId(body.projectId)) {
+      return c.json({ success: false, message: "Invalid projectId" }, 400);
     }
 
-    if (body.outsideName || body.towerId) {
+    if (body.outsideName || body.projectId) {
       const currentOutside = await Outside.findOne({
         _id: id,
         ...scopeFilter,
@@ -184,7 +184,7 @@ export const updateOutside = async (c: Context) => {
       const exists = await Outside.findOne({
         _id: { $ne: id },
         organizationId: user.organizationId,
-        towerId: body.towerId || currentOutside.towerId,
+        projectId: body.projectId || currentOutside.projectId,
         outsideName: body.outsideName || currentOutside.outsideName,
       });
 
@@ -213,7 +213,7 @@ export const updateOutside = async (c: Context) => {
         new: true,
         runValidators: true,
       }
-    ).populate("towerId", "towerName towerNumber");
+    ).populate("projectId", "towerName towerNumber");
 
     if (!outside) {
       return c.json(

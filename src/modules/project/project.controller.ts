@@ -3,8 +3,12 @@ import mongoose from "mongoose";
 import { Project } from "./project.model";
 import { buildScopeFilter } from "../../utils/buildScopeFilter";
 
-const isMongoId = (id: string): boolean =>
-  mongoose.Types.ObjectId.isValid(id);
+import { Floor } from "../tower-floor/floor.model";
+import { Flat } from "../flat/flat.model";
+import { Outside } from "../tower-outside/outside.model";
+import { Tower } from "../tower/tower.model";
+
+const isMongoId = (id: string): boolean => mongoose.Types.ObjectId.isValid(id);
 
 export const createProject = async (c: Context) => {
   try {
@@ -224,5 +228,132 @@ export const deleteProject = async (c: Context) => {
     });
   } catch (error: any) {
     return c.json({ success: false, message: error.message }, 400);
+  }
+};
+
+
+
+
+//  get project structure with towers, floors, flats and outside areas
+
+export const getProjectStructure = async (c: Context) => {
+  try {
+    const user = c.get("user");
+    const projectId = c.req.param("projectId");
+
+    if (!projectId || !isMongoId(projectId)) {
+      return c.json(
+        { success: false, message: "Invalid projectId" },
+        400
+      );
+    }
+
+    const scopeFilter: any = await buildScopeFilter(user);
+
+    const project = await Project.findOne({
+      _id: projectId,
+      ...scopeFilter,
+      status: "active",
+    });
+
+    if (!project) {
+      return c.json(
+        { success: false, message: "Project not found" },
+        404
+      );
+    }
+
+    const [towers, outsideAreas] = await Promise.all([
+      Tower.find({
+        organizationId: user.organizationId,
+        projectId,
+        isActive: true,
+      }).sort({ createdAt: 1 }),
+
+      Outside.find({
+        organizationId: user.organizationId,
+        projectId,
+        isActive: true,
+      }).sort({ createdAt: 1 }),
+    ]);
+
+    const towerIds = towers.map((t) => t._id);
+
+    const floors = await Floor.find({
+      organizationId: user.organizationId,
+      projectId,
+      towerId: { $in: towerIds },
+      isActive: true,
+    }).sort({ createdAt: 1 });
+
+    const floorIds = floors.map((f) => f._id);
+
+    const flats = await Flat.find({
+      organizationId: user.organizationId,
+      projectId,
+      floorId: { $in: floorIds },
+      isActive: true,
+    }).sort({ createdAt: 1 });
+
+    const structure = {
+      project: {
+        _id: project._id,
+        name: project.projectName,
+        type: "project",
+      },
+
+      nonTowerArea: {
+        type: "nonTowerArea",
+        name: "Non Tower Area",
+        children: outsideAreas.map((area) => ({
+          _id: area._id,
+          name: area.outsideName,
+          type: "outside",
+        })),
+      },
+
+      towers: towers.map((tower) => {
+        const towerFloors = floors.filter(
+          (floor) =>
+            String(floor.towerId) === String(tower._id)
+        );
+
+        return {
+          _id: tower._id,
+          name: tower.towerName,
+          type: "tower",
+          totalFloors: towerFloors.length,
+          children: towerFloors.map((floor) => {
+            const floorFlats = flats.filter(
+              (flat) =>
+                String(flat.floorId) === String(floor._id)
+            );
+
+            return {
+              _id: floor._id,
+              name: floor.floorName,
+              type: "floor",
+              totalFlats: floorFlats.length,
+              children: floorFlats.map((flat) => ({
+                _id: flat._id,
+                name: flat.flatName,
+                flatNumber: flat.flatNumber,
+                type: "flat",
+              })),
+            };
+          }),
+        };
+      }),
+    };
+
+    return c.json({
+      success: true,
+      data: structure,
+    });
+  } catch (error: any) {
+    return c.json(
+      { success: false, message: error.message },
+      400
+    );
   }
 };

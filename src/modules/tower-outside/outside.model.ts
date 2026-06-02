@@ -7,7 +7,7 @@ export interface IOutside extends Document {
 
   outsideName: string;
   outsideNote?: string;
-  towerId: mongoose.Types.ObjectId;
+  projectId?: mongoose.Types.ObjectId;
   status: "active" | "inactive";
   createdAt: Date;
   updatedAt: Date;
@@ -28,7 +28,12 @@ const outsideSchema = new Schema<IOutside>(
       required: true,
       index: true,
     },
-
+    projectId: {
+      type: Schema.Types.ObjectId,
+      ref: "Project",
+      default: null,
+      index: true,
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -46,13 +51,6 @@ const outsideSchema = new Schema<IOutside>(
       type: String,
       trim: true,
       default: "",
-    },
-
-    towerId: {
-      type: Schema.Types.ObjectId,
-      ref: "Tower",
-      required: [true, "Tower ID is required"],
-      index: true,
     },
 
     status: {
