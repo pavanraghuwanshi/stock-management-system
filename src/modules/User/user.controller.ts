@@ -272,28 +272,48 @@ export const getAllUsers = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
 
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+    const creatorRoleName =
+      loggedInUser?.roleId?.name ||
+      loggedInUser?.roleName ||
+      loggedInUser?.role;
 
-    const userFilter: any = {
-      organizationId: scopeFilter.organizationId,
-    };
+    const queryOrganizationId = c.req.query("organizationId");
 
-    if (scopeFilter.ownerId?.$in) {
-      userFilter._id = { $in: scopeFilter.ownerId.$in };
-    } else if (scopeFilter.ownerId) {
-      userFilter._id = scopeFilter.ownerId;
-    }
+    let userFilter: any = {};
 
-    if (scopeFilter.nodeId) {
-      userFilter.$or = [
-        { primaryNodeId: scopeFilter.nodeId },
-        { nodeIds: scopeFilter.nodeId },
-      ];
+    if (creatorRoleName === "superAdmin") {
+      if (queryOrganizationId) {
+        if (!isValidObjectId(queryOrganizationId)) {
+          return c.json(
+            { success: false, message: "Invalid organizationId" },
+            400
+          );
+        }
+
+        userFilter.organizationId = queryOrganizationId;
+      }
+    } else {
+      const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+      userFilter.organizationId = scopeFilter.organizationId;
+
+      if (scopeFilter.ownerId?.$in) {
+        userFilter._id = { $in: scopeFilter.ownerId.$in };
+      } else if (scopeFilter.ownerId) {
+        userFilter._id = scopeFilter.ownerId;
+      }
+
+      if (scopeFilter.nodeId) {
+        userFilter.$or = [
+          { primaryNodeId: scopeFilter.nodeId },
+          { nodeIds: scopeFilter.nodeId },
+        ];
+      }
     }
 
     const users = await User.find({
       ...userFilter,
-      _id: { $ne: loggedInUser._id }, // exclude logged-in user
+      _id: { $ne: loggedInUser._id },
     })
       .select("+password")
       .populate("roleId", "name scope permissions")
