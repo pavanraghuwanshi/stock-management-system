@@ -326,7 +326,7 @@ export const getProjectStructure = async (c: Context) => {
       nonTowerArea: {
         type: "nonTowerArea",
         name: "Non Tower Area",
-        children: outsideAreas.map((area: any) => ({
+        areas: outsideAreas.map((area: any) => ({
           _id: area._id,
           name: area.outsideName,
           type: "outside",
@@ -344,7 +344,7 @@ export const getProjectStructure = async (c: Context) => {
           towerNumber: tower.towerNumber,
           type: "tower",
           totalFloors: towerFloors.length,
-          children: towerFloors.map((floor: any) => {
+          floors: towerFloors.map((floor: any) => {
             const floorFlats = flats.filter(
               (flat: any) => String(flat.floorId) === String(floor._id)
             );
@@ -355,7 +355,7 @@ export const getProjectStructure = async (c: Context) => {
               floorNumber: floor.floorNumber,
               type: "floor",
               totalFlats: floorFlats.length,
-              children: floorFlats.map((flat: any) => ({
+              flats: floorFlats.map((flat: any) => ({
                 _id: flat._id,
                 name: flat.flatName,
                 flatNumber: flat.flatNumber,
