@@ -60,7 +60,6 @@ export const createProject = async (c: Context) => {
 export const getProjects = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -70,7 +69,7 @@ export const getProjects = async (c: Context) => {
     const skip = (page - 1) * limit;
 
     const query: any = {
-      ...scopeFilter,
+      organizationId: user.organizationId,
     };
 
     if (search) {
@@ -110,7 +109,6 @@ export const getProjects = async (c: Context) => {
 export const getProjectById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -123,7 +121,7 @@ export const getProjectById = async (c: Context) => {
 
     const project = await Project.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     });
 
     if (!project) {
@@ -142,7 +140,6 @@ export const getProjectById = async (c: Context) => {
 export const updateProject = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
     const body = await c.req.json();
 
@@ -176,7 +173,7 @@ export const updateProject = async (c: Context) => {
     const project = await Project.findOneAndUpdate(
       {
         _id: id,
-        ...scopeFilter,
+        organizationId: user.organizationId,
       },
       body,
       {
@@ -202,7 +199,6 @@ export const updateProject = async (c: Context) => {
 export const deleteProject = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -215,7 +211,7 @@ export const deleteProject = async (c: Context) => {
 
     const project = await Project.findOneAndDelete({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     });
 
     if (!project) {
