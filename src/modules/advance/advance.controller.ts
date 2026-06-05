@@ -4,27 +4,20 @@ import type { Context } from "hono";
 import mongoose from "mongoose";
 import { Advance } from "./advance.model";
 import { User } from "../User/user.model";
-import { buildScopeFilter } from "../../utils/buildScopeFilter";
 
 const isValidObjectId = (id: any) => mongoose.Types.ObjectId.isValid(id);
 
 const getLoggedInUserId = (user: any) => user?._id || user?.id;
 
 const buildAdvanceScopeFilter = async (loggedInUser: any) => {
-  const scopeFilter: any = await buildScopeFilter(loggedInUser);
+  const userScope = loggedInUser?.scope || loggedInUser?.role?.scope;
 
   const filter: any = {
-    organizationId: scopeFilter.organizationId,
+    organizationId: loggedInUser.organizationId,
   };
 
-  if (scopeFilter.ownerId?.$in) {
-    filter.userId = { $in: scopeFilter.ownerId.$in };
-  } else if (scopeFilter.ownerId) {
-    filter.userId = scopeFilter.ownerId;
-  }
-
-  if (scopeFilter.nodeId) {
-    filter.nodeId = scopeFilter.nodeId;
+  if (userScope === "self") {
+    filter.userId = getLoggedInUserId(loggedInUser);
   }
 
   return filter;
@@ -61,18 +54,16 @@ export const createAdvance = async (c: Context) => {
       );
     }
 
-    const scopeFilter = await buildAdvanceScopeFilter(loggedInUser);
-
     const user = await User.findOne({
       _id: userId,
-      ...scopeFilter,
+      organizationId: loggedInUser.organizationId,
     });
 
     if (!user) {
       return c.json(
         {
           success: false,
-          message: "User not found in your CRM scope",
+          message: "User not found in your organization",
         },
         404
       );
