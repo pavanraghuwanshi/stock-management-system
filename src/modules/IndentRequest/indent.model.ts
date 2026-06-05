@@ -2,35 +2,20 @@ import mongoose from "mongoose";
 
 const indentItemSchema = new mongoose.Schema(
   {
-    materialId: {
+    itemId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Material",
-      default: null,
-    },
-    materialName: {
-      type: String,
+      ref: "Item",
       required: true,
-      trim: true,
     },
     quantity: {
       type: Number,
       required: true,
-      min: 0,
+      min: 1,
     },
-    unit: {
-      type: String,
+    unitId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Unit",
       required: true,
-      trim: true,
-    },
-    usedQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    remarks: {
-      type: String,
-      default: null,
-      trim: true,
     },
   },
   { _id: false }
@@ -48,16 +33,62 @@ const indentSchema = new mongoose.Schema(
     indentId: {
       type: String,
       required: true,
-      trim: true,
+      unique: true,
+      index: true,
     },
 
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
+      required: true,
+      index: true,
+    },
+
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high", "urgent"],
+      default: "low",
+      index: true,
+    },
+
+    estimateDeliveryDate: {
+      type: Date,
       default: null,
     },
 
-    area: {
+    indentFor: {
+      type: String,
+      enum: ["project", "tower", "floor", "flat"],
+      required: true,
+      index: true,
+    },
+
+    towerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tower",
+      default: null,
+    },
+
+    floorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Floor",
+      default: null,
+    },
+
+    flatId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Flat",
+      default: null,
+    },
+
+    storageLocation: {
       type: String,
       default: null,
       trim: true,
@@ -66,7 +97,7 @@ const indentSchema = new mongoose.Schema(
     items: {
       type: [indentItemSchema],
       required: true,
-      validate: [(v: any[]) => v.length > 0, "At least one item is required"],
+      default: [],
     },
 
     status: {
@@ -116,14 +147,14 @@ const indentSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
   },
   { timestamps: true }
 );
 
-indentSchema.index({ organizationId: 1, indentId: 1 }, { unique: true });
-indentSchema.index({ organizationId: 1, ownerId: 1 });
-indentSchema.index({ organizationId: 1, nodeId: 1 });
+indentSchema.index({ organizationId: 1, userId: 1 });
 indentSchema.index({ organizationId: 1, status: 1 });
+indentSchema.index({ organizationId: 1, projectId: 1 });
 
 export const Indent = mongoose.model("Indent", indentSchema);

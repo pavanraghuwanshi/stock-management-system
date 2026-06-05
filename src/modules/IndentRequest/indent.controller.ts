@@ -5,8 +5,34 @@ import { buildScopeFilter } from "../../utils/buildScopeFilter";
 
 const isValidObjectId = (id: any) => mongoose.Types.ObjectId.isValid(id);
 
+const getLoggedInUserId = (user: any) => user?._id || user?.id;
+
+const getUserScope = (user: any) => {
+  return user?.scope || user?.role?.scope || user?.roleId?.scope;
+};
+
 const canManageIndentStatus = (user: any) => {
-  return user?.roleId?.scope === "organization";
+  return getUserScope(user) === "organization";
+};
+
+const buildIndentScopeFilter = async (loggedInUser: any) => {
+  const scopeFilter: any = await buildScopeFilter(loggedInUser);
+
+  const filter: any = {
+    organizationId: scopeFilter.organizationId,
+  };
+
+  if (scopeFilter.ownerId?.$in) {
+    filter.userId = { $in: scopeFilter.ownerId.$in };
+  } else if (scopeFilter.ownerId) {
+    filter.userId = scopeFilter.ownerId;
+  }
+
+  if (scopeFilter.nodeId) {
+    filter.nodeId = scopeFilter.nodeId;
+  }
+
+  return filter;
 };
 
 const generateIndentId = async (organizationId: string) => {
@@ -14,12 +40,77 @@ const generateIndentId = async (organizationId: string) => {
   return `IND-${String(count + 1).padStart(3, "0")}`;
 };
 
+const populateIndent = (query: any) => {
+  return query
+    .populate("requestedBy", "name email mobile")
+    .populate("ownerId", "name email mobile")
+    .populate("userId", "name email mobile")
+    .populate("nodeId", "name type")
+    .populate("projectId", "projectName name")
+    .populate("towerId", "towerName name")
+    .populate("floorId", "floorName name")
+    .populate("flatId", "flatName name")
+    .populate("items.itemId", "itemName name")
+    .populate("items.unitId", "unitName name")
+    .populate("approvedBy", "name email mobile");
+};
+
 export const createIndent = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
     const body = await c.req.json();
 
-    const { projectId, area, items = [], status } = body;
+    const {
+      projectId,
+      userId,
+      priority = "low",
+      estimateDeliveryDate,
+      indentFor,
+      towerId,
+      floorId,
+      flatId,
+      storageLocation,
+      items = [],
+      status,
+    } = body;
+
+    if (!projectId || !userId || !indentFor) {
+      return c.json(
+        {
+          success: false,
+          message: "projectId, userId and indentFor are required",
+        },
+        400
+      );
+    }
+
+    if (!isValidObjectId(projectId)) {
+      return c.json({ success: false, message: "Invalid projectId" }, 400);
+    }
+
+    if (!isValidObjectId(userId)) {
+      return c.json({ success: false, message: "Invalid userId" }, 400);
+    }
+
+    if (!["low", "medium", "high", "urgent"].includes(priority)) {
+      return c.json({ success: false, message: "Invalid priority" }, 400);
+    }
+
+    if (!["project", "tower", "floor", "flat"].includes(indentFor)) {
+      return c.json({ success: false, message: "Invalid indentFor" }, 400);
+    }
+
+    if (towerId && !isValidObjectId(towerId)) {
+      return c.json({ success: false, message: "Invalid towerId" }, 400);
+    }
+
+    if (floorId && !isValidObjectId(floorId)) {
+      return c.json({ success: false, message: "Invalid floorId" }, 400);
+    }
+
+    if (flatId && !isValidObjectId(flatId)) {
+      return c.json({ success: false, message: "Invalid flatId" }, 400);
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return c.json(
@@ -28,23 +119,30 @@ export const createIndent = async (c: Context) => {
       );
     }
 
-    if (projectId && !isValidObjectId(projectId)) {
-      return c.json({ success: false, message: "Invalid projectId" }, 400);
-    }
-
     for (const item of items) {
-      if (!item.materialName || !item.quantity || !item.unit) {
+      if (!item.itemId || !item.quantity || !item.unitId) {
         return c.json(
           {
             success: false,
-            message: "materialName, quantity and unit are required in items",
+            message: "itemId, quantity and unitId are required in items",
           },
           400
         );
       }
 
-      if (item.materialId && !isValidObjectId(item.materialId)) {
-        return c.json({ success: false, message: "Invalid materialId" }, 400);
+      if (!isValidObjectId(item.itemId)) {
+        return c.json({ success: false, message: "Invalid itemId" }, 400);
+      }
+
+      if (!isValidObjectId(item.unitId)) {
+        return c.json({ success: false, message: "Invalid unitId" }, 400);
+      }
+
+      if (Number(item.quantity) <= 0) {
+        return c.json(
+          { success: false, message: "Quantity must be greater than 0" },
+          400
+        );
       }
     }
 
@@ -66,8 +164,17 @@ export const createIndent = async (c: Context) => {
     const indent = await Indent.create({
       organizationId: loggedInUser.organizationId,
       indentId,
-      projectId: projectId || null,
-      area: area || null,
+      projectId,
+      userId,
+      priority,
+      estimateDeliveryDate: estimateDeliveryDate
+        ? new Date(estimateDeliveryDate)
+        : null,
+      indentFor,
+      towerId: towerId || null,
+      floorId: floorId || null,
+      flatId: flatId || null,
+      storageLocation: storageLocation || null,
       items,
       status: finalStatus,
       requestedBy: loggedInUser._id,
@@ -77,12 +184,7 @@ export const createIndent = async (c: Context) => {
       approvedAt: finalStatus === "Approved" ? new Date() : null,
     });
 
-    const populatedIndent = await Indent.findById(indent._id)
-      .populate("requestedBy", "name email")
-      .populate("ownerId", "name email")
-      .populate("nodeId", "name type")
-      .populate("projectId", "name")
-      .populate("approvedBy", "name email");
+    const populatedIndent = await populateIndent(Indent.findById(indent._id));
 
     return c.json(
       {
@@ -107,13 +209,16 @@ export const getAllIndents = async (c: Context) => {
       search = "",
       status,
       projectId,
+      userId,
+      priority,
+      indentFor,
     } = c.req.query();
 
     const pageNumber = Math.max(Number(page) || 1, 1);
     const limitNumber = Math.max(Number(limit) || 10, 1);
     const skip = (pageNumber - 1) * limitNumber;
 
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+    const scopeFilter: any = await buildIndentScopeFilter(loggedInUser);
 
     const filter: any = {
       ...scopeFilter,
@@ -121,6 +226,8 @@ export const getAllIndents = async (c: Context) => {
     };
 
     if (status) filter.status = status;
+    if (priority) filter.priority = priority;
+    if (indentFor) filter.indentFor = indentFor;
 
     if (projectId) {
       if (!isValidObjectId(projectId)) {
@@ -129,24 +236,27 @@ export const getAllIndents = async (c: Context) => {
       filter.projectId = projectId;
     }
 
+    if (userId) {
+      if (!isValidObjectId(userId)) {
+        return c.json({ success: false, message: "Invalid userId" }, 400);
+      }
+      filter.userId = userId;
+    }
+
     if (search) {
       filter.$or = [
         { indentId: { $regex: search, $options: "i" } },
-        { area: { $regex: search, $options: "i" } },
-        { "items.materialName": { $regex: search, $options: "i" } },
+        { storageLocation: { $regex: search, $options: "i" } },
       ];
     }
 
     const [indents, total] = await Promise.all([
-      Indent.find(filter)
-        .populate("requestedBy", "name email")
-        .populate("ownerId", "name email")
-        .populate("nodeId", "name type")
-        .populate("projectId", "name")
-        .populate("approvedBy", "name email")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNumber),
+      populateIndent(
+        Indent.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limitNumber)
+      ),
 
       Indent.countDocuments(filter),
     ]);
@@ -173,18 +283,15 @@ export const getIndentById = async (c: Context) => {
       return c.json({ success: false, message: "Invalid indent id" }, 400);
     }
 
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+    const scopeFilter: any = await buildIndentScopeFilter(loggedInUser);
 
-    const indent = await Indent.findOne({
-      _id: id,
-      ...scopeFilter,
-      isActive: true,
-    })
-      .populate("requestedBy", "name email")
-      .populate("ownerId", "name email")
-      .populate("nodeId", "name type")
-      .populate("projectId", "name")
-      .populate("approvedBy", "name email");
+    const indent = await populateIndent(
+      Indent.findOne({
+        _id: id,
+        ...scopeFilter,
+        isActive: true,
+      })
+    );
 
     if (!indent) {
       return c.json({ success: false, message: "Indent not found" }, 404);
@@ -209,7 +316,7 @@ export const updateIndent = async (c: Context) => {
       return c.json({ success: false, message: "Invalid indent id" }, 400);
     }
 
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+    const scopeFilter: any = await buildIndentScopeFilter(loggedInUser);
 
     const indent = await Indent.findOne({
       _id: id,
@@ -228,18 +335,76 @@ export const updateIndent = async (c: Context) => {
       );
     }
 
-    const { projectId, area, items } = body;
+    const {
+      projectId,
+      userId,
+      priority,
+      estimateDeliveryDate,
+      indentFor,
+      towerId,
+      floorId,
+      flatId,
+      storageLocation,
+      items,
+    } = body;
 
     if (projectId !== undefined) {
-      if (projectId && !isValidObjectId(projectId)) {
+      if (!projectId || !isValidObjectId(projectId)) {
         return c.json({ success: false, message: "Invalid projectId" }, 400);
       }
-
-      indent.projectId = projectId || null;
+      indent.projectId = projectId;
     }
 
-    if (area !== undefined) {
-      indent.area = area || null;
+    if (userId !== undefined) {
+      if (!userId || !isValidObjectId(userId)) {
+        return c.json({ success: false, message: "Invalid userId" }, 400);
+      }
+      indent.userId = userId;
+    }
+
+    if (priority !== undefined) {
+      if (!["low", "medium", "high", "urgent"].includes(priority)) {
+        return c.json({ success: false, message: "Invalid priority" }, 400);
+      }
+      indent.priority = priority;
+    }
+
+    if (estimateDeliveryDate !== undefined) {
+      indent.estimateDeliveryDate = estimateDeliveryDate
+        ? new Date(estimateDeliveryDate)
+        : null;
+    }
+
+    if (indentFor !== undefined) {
+      if (!["project", "tower", "floor", "flat"].includes(indentFor)) {
+        return c.json({ success: false, message: "Invalid indentFor" }, 400);
+      }
+      indent.indentFor = indentFor;
+    }
+
+    if (towerId !== undefined) {
+      if (towerId && !isValidObjectId(towerId)) {
+        return c.json({ success: false, message: "Invalid towerId" }, 400);
+      }
+      indent.towerId = towerId || null;
+    }
+
+    if (floorId !== undefined) {
+      if (floorId && !isValidObjectId(floorId)) {
+        return c.json({ success: false, message: "Invalid floorId" }, 400);
+      }
+      indent.floorId = floorId || null;
+    }
+
+    if (flatId !== undefined) {
+      if (flatId && !isValidObjectId(flatId)) {
+        return c.json({ success: false, message: "Invalid flatId" }, 400);
+      }
+      indent.flatId = flatId || null;
+    }
+
+    if (storageLocation !== undefined) {
+      indent.storageLocation = storageLocation || null;
     }
 
     if (items !== undefined) {
@@ -251,18 +416,29 @@ export const updateIndent = async (c: Context) => {
       }
 
       for (const item of items) {
-        if (!item.materialName || !item.quantity || !item.unit) {
+        if (!item.itemId || !item.quantity || !item.unitId) {
           return c.json(
             {
               success: false,
-              message: "materialName, quantity and unit are required in items",
+              message: "itemId, quantity and unitId are required in items",
             },
             400
           );
         }
 
-        if (item.materialId && !isValidObjectId(item.materialId)) {
-          return c.json({ success: false, message: "Invalid materialId" }, 400);
+        if (!isValidObjectId(item.itemId)) {
+          return c.json({ success: false, message: "Invalid itemId" }, 400);
+        }
+
+        if (!isValidObjectId(item.unitId)) {
+          return c.json({ success: false, message: "Invalid unitId" }, 400);
+        }
+
+        if (Number(item.quantity) <= 0) {
+          return c.json(
+            { success: false, message: "Quantity must be greater than 0" },
+            400
+          );
         }
       }
 
@@ -271,12 +447,7 @@ export const updateIndent = async (c: Context) => {
 
     await indent.save();
 
-    const updatedIndent = await Indent.findById(indent._id)
-      .populate("requestedBy", "name email")
-      .populate("ownerId", "name email")
-      .populate("nodeId", "name type")
-      .populate("projectId", "name")
-      .populate("approvedBy", "name email");
+    const updatedIndent = await populateIndent(Indent.findById(indent._id));
 
     return c.json({
       success: true,
@@ -337,12 +508,7 @@ export const updateIndentStatus = async (c: Context) => {
 
     await indent.save();
 
-    const updatedIndent = await Indent.findById(indent._id)
-      .populate("requestedBy", "name email")
-      .populate("ownerId", "name email")
-      .populate("nodeId", "name type")
-      .populate("projectId", "name")
-      .populate("approvedBy", "name email");
+    const updatedIndent = await populateIndent(Indent.findById(indent._id));
 
     return c.json({
       success: true,
@@ -363,7 +529,7 @@ export const deleteIndent = async (c: Context) => {
       return c.json({ success: false, message: "Invalid indent id" }, 400);
     }
 
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
+    const scopeFilter: any = await buildIndentScopeFilter(loggedInUser);
 
     const indent = await Indent.findOne({
       _id: id,
