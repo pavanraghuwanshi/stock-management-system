@@ -38,6 +38,11 @@ const taskSchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
+    towerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tower",
+      default: null,
+    },
 
     priority: {
       type: String,
