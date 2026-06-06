@@ -66,7 +66,6 @@ export const createOutside = async (c: Context) => {
 export const getOutsides = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -76,7 +75,9 @@ export const getOutsides = async (c: Context) => {
 
     const skip = (page - 1) * limit;
 
-    const query: any = { ...scopeFilter };
+    const query: any = {
+      organizationId: user.organizationId,
+    };
 
     if (search) {
       query.$or = [
@@ -85,22 +86,25 @@ export const getOutsides = async (c: Context) => {
       ];
     }
 
-    if (status) query.status = status;
+    if (status) {
+      query.status = status;
+    }
 
     if (projectId) {
       if (!isMongoId(projectId)) {
         return c.json({ success: false, message: "Invalid projectId" }, 400);
       }
+
       query.projectId = projectId;
     }
 
     const total = await Outside.countDocuments(query);
 
     const outsides = await Outside.find(query)
-      .populate("projectId", "towerName towerNumber")
+      .populate("projectId", "projectName")
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -120,7 +124,6 @@ export const getOutsides = async (c: Context) => {
 export const getOutsideById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -133,8 +136,8 @@ export const getOutsideById = async (c: Context) => {
 
     const outside = await Outside.findOne({
       _id: id,
-      ...scopeFilter,
-    }).populate("projectId", "towerName towerNumber");
+      organizationId: user.organizationId,
+    }).populate("projectId", "projectName");
 
     if (!outside) {
       return c.json(
@@ -143,9 +146,12 @@ export const getOutsideById = async (c: Context) => {
       );
     }
 
-    return c.json({ success: true, data: outside });
+    return c.json({
+      success: true,
+      data: outside,
+    });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message }, 500);
   }
 };
 
