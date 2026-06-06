@@ -87,9 +87,9 @@ export const getProjects = async (c: Context) => {
     const total = await Project.countDocuments(query);
 
     const projects = await Project.find(query)
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -133,7 +133,7 @@ export const getProjectById = async (c: Context) => {
       data: project,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message }, 500);
   }
 };
 

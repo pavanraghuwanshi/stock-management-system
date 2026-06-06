@@ -69,7 +69,6 @@ export const createTower = async (c: Context) => {
 export const getTowers = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -80,7 +79,7 @@ export const getTowers = async (c: Context) => {
     const skip = (page - 1) * limit;
 
     const query: any = {
-      ...scopeFilter,
+      organizationId: user.organizationId,
     };
 
     if (search) {
@@ -106,9 +105,9 @@ export const getTowers = async (c: Context) => {
 
     const towers = await Tower.find(query)
       .populate("projectId", "projectName")
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -128,7 +127,6 @@ export const getTowers = async (c: Context) => {
 export const getTowerById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -141,7 +139,7 @@ export const getTowerById = async (c: Context) => {
 
     const tower = await Tower.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     }).populate("projectId", "projectName");
 
     if (!tower) {
@@ -153,7 +151,7 @@ export const getTowerById = async (c: Context) => {
       data: tower,
     });
   } catch (error: any) {
-    return c.json({ success: false, message: error.message }, 400);
+    return c.json({ success: false, message: error.message }, 500);
   }
 };
 
