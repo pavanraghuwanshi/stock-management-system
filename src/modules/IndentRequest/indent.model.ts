@@ -17,7 +17,11 @@ const indentItemSchema = new mongoose.Schema(
       ref: "Unit",
       required: true,
     },
-  },
+    price: {
+      type: Number,
+      required: true,   
+  }
+ },
   { _id: false }
 );
 
