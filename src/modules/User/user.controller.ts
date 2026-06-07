@@ -267,7 +267,6 @@ export const createUser = async (c: Context) => {
   }
 };
 
-
 export const getAllUsers = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
@@ -276,6 +275,8 @@ export const getAllUsers = async (c: Context) => {
       loggedInUser?.roleId?.name ||
       loggedInUser?.roleName ||
       loggedInUser?.role;
+
+    const creatorScope = loggedInUser?.roleId?.scope;
 
     const queryOrganizationId = c.req.query("organizationId");
 
@@ -293,25 +294,29 @@ export const getAllUsers = async (c: Context) => {
         userFilter.organizationId = queryOrganizationId;
       }
     } else {
-      const scopeFilter: any = await buildScopeFilter(loggedInUser);
-
-      userFilter.organizationId = scopeFilter.organizationId;
-
-      if (scopeFilter.ownerId?.$in) {
-        userFilter._id = { $in: scopeFilter.ownerId.$in };
-      } else if (scopeFilter.ownerId) {
-        userFilter._id = scopeFilter.ownerId;
+      if (!loggedInUser?.organizationId) {
+        return c.json(
+          { success: false, message: "organizationId not found in token" },
+          400
+        );
       }
 
-      if (scopeFilter.nodeId) {
-        userFilter.$or = [
-          { primaryNodeId: scopeFilter.nodeId },
-          { nodeIds: scopeFilter.nodeId },
-        ];
+      if (creatorScope === "self") {
+        return c.json({
+          success: true,
+          count: 0,
+          data: [],
+        });
+      }
+
+      userFilter.organizationId = loggedInUser.organizationId;
+
+      if (creatorScope !== "organization") {
+        userFilter["roleId.scope"] = { $ne: "organization" };
       }
     }
 
-    const users = await User.find({
+    let users = await User.find({
       ...userFilter,
       _id: { $ne: loggedInUser._id },
     })
@@ -324,6 +329,10 @@ export const getAllUsers = async (c: Context) => {
       .populate("projectId", "name")
       .populate("attendancePolicyId", "name")
       .sort({ createdAt: -1 });
+
+    if (creatorRoleName !== "superAdmin" && creatorScope !== "organization") {
+      users = users.filter((u: any) => u.roleId?.scope !== "organization");
+    }
 
     const usersWithPassword = users.map((user: any) => {
       const userObj = user.toObject();
