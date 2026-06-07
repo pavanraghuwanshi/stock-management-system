@@ -150,13 +150,27 @@ export const createUser = async (c: Context) => {
       }
     }
 
-    const existingUser = await User.findOne({
+    const existingEmailUser = await User.findOne({
       organizationId,
       email: email.toLowerCase(),
     });
 
-    if (existingUser) {
+    if (existingEmailUser) {
       return c.json({ success: false, message: "Email already exists" }, 409);
+    }
+
+    if (mobile) {
+      const existingMobileUser = await User.findOne({
+        organizationId,
+        mobile,
+      });
+
+      if (existingMobileUser) {
+        return c.json(
+          { success: false, message: "Mobile number already exists" },
+          409
+        );
+      }
     }
 
     const role = await Role.findOne({
