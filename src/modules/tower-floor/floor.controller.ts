@@ -69,7 +69,6 @@ export const createFloor = async (c: Context) => {
 export const getFloors = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -79,8 +78,15 @@ export const getFloors = async (c: Context) => {
 
     const skip = (page - 1) * limit;
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const query: any = {
-      ...scopeFilter,
+      organizationId: user.organizationId,
     };
 
     if (search) {
@@ -106,9 +112,9 @@ export const getFloors = async (c: Context) => {
 
     const floors = await Floor.find(query)
       .populate("towerId", "towerName towerNumber")
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -128,7 +134,6 @@ export const getFloors = async (c: Context) => {
 export const getFloorById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -139,9 +144,16 @@ export const getFloorById = async (c: Context) => {
       return c.json({ success: false, message: "Invalid floor id" }, 400);
     }
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const floor = await Floor.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     }).populate("towerId", "towerName towerNumber");
 
     if (!floor) {

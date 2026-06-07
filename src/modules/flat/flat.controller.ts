@@ -77,7 +77,6 @@ export const createFlat = async (c: Context) => {
 export const getFlats = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -87,8 +86,15 @@ export const getFlats = async (c: Context) => {
 
     const skip = (page - 1) * limit;
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const query: any = {
-      ...scopeFilter,
+      organizationId: user.organizationId,
     };
 
     if (search) {
@@ -114,9 +120,9 @@ export const getFlats = async (c: Context) => {
 
     const flats = await Flat.find(query)
       .populate(populateFloor)
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -136,7 +142,6 @@ export const getFlats = async (c: Context) => {
 export const getFlatById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -147,9 +152,16 @@ export const getFlatById = async (c: Context) => {
       return c.json({ success: false, message: "Invalid flat id" }, 400);
     }
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const flat = await Flat.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     }).populate(populateFloor);
 
     if (!flat) {
