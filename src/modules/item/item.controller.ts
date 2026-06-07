@@ -53,7 +53,6 @@ export const createItem = async (c: Context) => {
 export const getItems = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -65,8 +64,15 @@ export const getItems = async (c: Context) => {
 
     const skip = (page - 1) * limit;
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const query: any = {
-      ...scopeFilter,
+      organizationId: user.organizationId,
     };
 
     if (search) {
@@ -109,9 +115,9 @@ export const getItems = async (c: Context) => {
       .populate("unitId")
       .populate("groupId")
       .populate("subGroupId")
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+      .limit(limit);
 
     return c.json({
       success: true,
@@ -131,7 +137,6 @@ export const getItems = async (c: Context) => {
 export const getItemById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -142,9 +147,16 @@ export const getItemById = async (c: Context) => {
       return c.json({ success: false, message: "Invalid item id" }, 400);
     }
 
+    if (!user?.organizationId) {
+      return c.json(
+        { success: false, message: "organizationId not found in token" },
+        400
+      );
+    }
+
     const item = await Item.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: user.organizationId,
     })
       .populate("unitId")
       .populate("groupId")
