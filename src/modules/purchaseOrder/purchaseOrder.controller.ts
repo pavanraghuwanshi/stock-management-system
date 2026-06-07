@@ -78,6 +78,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
 
     const {
       indentId,
+      vendorId,
       vendorName,
       vendorMobile,
       vendorAddress,
@@ -85,15 +86,18 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       bypassApproval = false,
     } = body;
 
-    if (!indentId || !vendorName) {
+    if (!indentId || !vendorId) {
       return c.json(
-        { success: false, message: "indentId and vendorName are required" },
+        { success: false, message: "indentId and vendorId are required" },
         400
       );
     }
 
     if (!isValidObjectId(indentId)) {
       return c.json({ success: false, message: "Invalid indentId" }, 400);
+    }
+    if (!isValidObjectId(vendorId)) {
+      return c.json({ success: false, message: "Invalid vendorId" }, 400);
     }
 
     const indent = await Indent.findOne({
@@ -218,6 +222,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       organizationId: loggedInUser.organizationId,
       poNo,
       indentId,
+      vendorId,
       projectId: indent.projectId,
       requesterId: indent.userId,
       vendorName,

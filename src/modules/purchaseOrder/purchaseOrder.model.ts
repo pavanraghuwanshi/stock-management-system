@@ -64,6 +64,11 @@ const purchaseOrderSchema = new mongoose.Schema(
       ref: "Indent",
       required: true,
     },
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      required: true,
+    },
 
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
