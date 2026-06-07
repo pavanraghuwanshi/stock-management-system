@@ -5,6 +5,7 @@ import {
   punchOut,
   markAttendanceByAdmin,
   getAttendances,
+  getMyTodayAttendance,
 } from "./attendance.controller";
 
 import { auth } from "../../middleware/auth.middleware";
@@ -15,6 +16,8 @@ attendanceRoutes.use("*", auth);
 
 attendanceRoutes.post("/punch-in", punchIn);
 attendanceRoutes.patch("/punch-out/:id", punchOut);
+
+attendanceRoutes.get("/today/me", getMyTodayAttendance);
 
 attendanceRoutes.post("/mark", markAttendanceByAdmin);
 

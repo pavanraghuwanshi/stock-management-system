@@ -27,6 +27,8 @@ import advanceRoutes from "./modules/advance/advance.route";
 import deviceRoutes from "./modules/loginDeviceInfo/loginDevice.route";
 import attendanceRoutes from "./modules/attendance/attendance.route";
 import projectExtraRoutes from "./modules/projectDocument/projectDocument.route";
+import  approvalFlowRoutes  from "./modules/approvalFlow/aapprovalFlow.route";
+import purchaseOrderRoutes from "./modules/purchaseOrder/purchaseOrder.route";
 
 const routes = new Hono();
 
@@ -62,5 +64,7 @@ routes.route("/advances", advanceRoutes);
 routes.route("/devices", deviceRoutes);
 routes.route("/attendance", attendanceRoutes);
 routes.route("/projects", projectExtraRoutes);
+routes.route("/approval-flow", approvalFlowRoutes);
+routes.route("/purchase-orders", purchaseOrderRoutes);
 
 export default routes;

@@ -553,3 +553,53 @@ export const getAttendances = async (c: Context) => {
     );
   }
 };
+
+
+// ======================================================
+// GET MY TODAY ATTENDANCE STATUS
+// ======================================================
+
+export const getMyTodayAttendance = async (c: Context) => {
+  try {
+    const loggedInUser = c.get("user");
+
+    const today = startOfDay();
+
+    const attendance = await Attendance.findOne({
+      organizationId: loggedInUser.organizationId,
+      userId: loggedInUser._id,
+      date: today,
+      isActive: true,
+    })
+      .populate("userId", "name email mobile")
+      .populate("nodeId", "name type")
+      .populate("attendancePolicyId", "name checkInTime checkOutTime");
+
+    let nextAction = "PunchIn";
+
+    if (attendance?.punchInTime && !attendance?.punchOutTime) {
+      nextAction = "PunchOut";
+    }
+
+    if (attendance?.punchInTime && attendance?.punchOutTime) {
+      nextAction = "Completed";
+    }
+
+    return c.json({
+      success: true,
+      message: "Today attendance fetched successfully",
+      data: {
+        date: today,
+        nextAction,
+        isPunchedIn: !!attendance?.punchInTime,
+        isPunchedOut: !!attendance?.punchOutTime,
+        attendance: attendance || null,
+      },
+    });
+  } catch (error: any) {
+    return c.json(
+      { success: false, message: error.message },
+      400
+    );
+  }
+};
