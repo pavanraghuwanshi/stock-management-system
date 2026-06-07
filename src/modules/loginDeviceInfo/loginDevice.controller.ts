@@ -31,11 +31,11 @@ export const saveUserDevice = async (c: Context) => {
   try {
     const user = c.get("user");
 
-    // ✅ skip for superadmin / organization owner
-    if (
-      user?.roleName === "superAdmin" ||
-      user?.roleName === "organization"
-    ) {
+    const userScope = user?.roleId?.scope || user?.scope;
+    const roleName = user?.roleId?.name || user?.roleName || user?.role;
+
+    // ✅ superAdmin or organization scope = no device check
+    if (roleName === "superAdmin" || userScope === "organization") {
       return c.json({
         success: true,
         message: "Device restriction skipped",
@@ -72,7 +72,7 @@ export const saveUserDevice = async (c: Context) => {
       userId: user._id,
     });
 
-    // first time login device save
+    // ✅ first time: any device allowed and saved
     if (!existing) {
       const newDevice = await UserDevice.create({
         organizationId: user.organizationId,
@@ -94,19 +94,17 @@ export const saveUserDevice = async (c: Context) => {
       });
     }
 
-    // device mismatch
+    // ✅ next time: only same device allowed
     if (existing.deviceId !== deviceId) {
       return c.json(
         {
           success: false,
-          message:
-            "Please login with your real device",
+          message: "Please login with your registered device",
         },
         403
       );
     }
 
-    // update login info
     existing.deviceName = deviceName || existing.deviceName;
     existing.deviceModel = deviceModel || existing.deviceModel;
     existing.platform = platform || existing.platform;

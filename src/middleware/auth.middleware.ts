@@ -43,10 +43,7 @@ export const auth = async (c: Context, next: Next) => {
     let decoded: any;
 
     try {
-      decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET as string
-      );
+      decoded = jwt.verify(token, process.env.JWT_SECRET as string);
     } catch {
       return c.json(
         {
