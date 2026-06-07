@@ -115,10 +115,10 @@ export const getFloors = async (c: Context) => {
       .lean();
 
     allFloors.sort((a: any, b: any) => {
-      return Number(a.floorName) - Number(b.floorName);
-    });
+        return Number(a.floorNumber) - Number(b.floorNumber);
+      });
 
-    const floors = allFloors.slice(skip, skip + limit);
+      const floors = allFloors.slice(skip, skip + limit);
 
     return c.json({
       success: true,
