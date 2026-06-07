@@ -112,7 +112,6 @@ export const getFloors = async (c: Context) => {
 
     const floors = await Floor.find(query)
       .populate("towerId", "towerName towerNumber")
-      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 

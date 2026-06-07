@@ -120,7 +120,6 @@ export const getFlats = async (c: Context) => {
 
     const flats = await Flat.find(query)
       .populate(populateFloor)
-      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
