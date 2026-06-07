@@ -143,6 +143,14 @@ const indentSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    images: [
+      {
+        fileName: String,
+        filePath: String,
+        mimeType: String,
+        size: Number,
+      },
+    ],
 
     isActive: {
       type: Boolean,
