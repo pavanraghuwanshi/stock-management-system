@@ -1,47 +1,47 @@
 import mongoose from "mongoose";
 
-const materialStockSchema = new mongoose.Schema(
+const materialIssueSchema = new mongoose.Schema(
   {
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Organization",
       required: true,
-      index: true,
     },
 
-    projectId: {
+    stockId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Project",
+      ref: "MaterialStock",
       required: true,
-      index: true,
     },
 
     indentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Indent",
       required: true,
-      index: true,
     },
 
     purchaseOrderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PurchaseOrder",
       required: true,
-      index: true,
     },
 
     requesterId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
+    },
+
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      required: true,
     },
 
     itemId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Item",
       required: true,
-      index: true,
     },
 
     unitId: {
@@ -50,36 +50,26 @@ const materialStockSchema = new mongoose.Schema(
       required: true,
     },
 
-    purchasedQuantity: {
+    issueQuantity: {
       type: Number,
-      default: 0,
+      required: true,
     },
 
-    receivedQuantity: {
-      type: Number,
-      default: 0,
+    issuedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
     },
 
-    issuedQuantity: {
-      type: Number,
-      default: 0,
-    },
-
-    availableQuantity: {
-      type: Number,
-      default: 0,
-    },
-
-    status: {
+    note: {
       type: String,
-      enum: ["Available", "PartiallyIssued", "Issued"],
-      default: "Available",
+      default: null,
     },
   },
   { timestamps: true }
 );
 
-export const MaterialStock = mongoose.model(
-  "MaterialStock",
-  materialStockSchema
+export const MaterialIssue = mongoose.model(
+  "MaterialIssue",
+  materialIssueSchema
 );

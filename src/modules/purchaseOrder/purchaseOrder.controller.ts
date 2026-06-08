@@ -434,32 +434,40 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
         (item: any) => String(item.itemId) === String(receivedItem.itemId)
       );
 
-      if (!poItem) {
-        return c.json({ success: false, message: "Invalid itemId in received items" }, 400);
-      }
-
       const receivedQty = Number(receivedItem.receivedQuantity || 0);
 
-      if (receivedQty <= 0) {
-        return c.json(
-          { success: false, message: "receivedQuantity must be greater than 0" },
-          400
-        );
+      let stock = await MaterialStock.findOne({
+        organizationId: po.organizationId,
+        projectId: po.projectId,
+        indentId: po.indentId,
+        purchaseOrderId: po._id,
+        requesterId: po.requesterId,
+        itemId: poItem.itemId,
+        unitId: poItem.unitId,
+      });
+
+      if (stock) {
+        stock.receivedQuantity += receivedQty;
+        stock.availableQuantity += receivedQty;
+        stock.purchasedQuantity = poItem.orderQuantity;
+        stock.status = stock.availableQuantity > 0 ? "Available" : "Issued";
+        await stock.save();
+      } else {
+        await MaterialStock.create({
+          organizationId: po.organizationId,
+          projectId: po.projectId,
+          indentId: po.indentId,
+          purchaseOrderId: po._id,
+          requesterId: po.requesterId,
+          itemId: poItem.itemId,
+          unitId: poItem.unitId,
+          purchasedQuantity: poItem.orderQuantity,
+          receivedQuantity: receivedQty,
+          issuedQuantity: 0,
+          availableQuantity: receivedQty,
+          status: "Available",
+        });
       }
-
-      const newTotalReceived = Number(poItem.receivedQuantity || 0) + receivedQty;
-
-      if (newTotalReceived > Number(poItem.orderQuantity || 0)) {
-        return c.json(
-          {
-            success: false,
-            message: "receivedQuantity cannot be greater than orderQuantity",
-          },
-          400
-        );
-      }
-
-      poItem.receivedQuantity = newTotalReceived;
     }
 
     const allReceived = po.items.every(
@@ -528,20 +536,29 @@ export const issueMaterialToRequester = async (c: Context) => {
           sourceId: po._id,
         });
 
-        if (stock) {
-          stock.quantity = extraQty;
-          await stock.save();
-        } else {
-          await MaterialStock.create({
-            organizationId: po.organizationId,
-            projectId: po.projectId,
-            itemId: item.itemId,
-            unitId: item.unitId,
-            quantity: extraQty,
-            sourceType: "PurchaseOrder",
-            sourceId: po._id,
-          });
-        }
+      if (stock) {
+        stock.purchasedQuantity += extraQty;
+        stock.receivedQuantity += extraQty;
+        stock.availableQuantity += extraQty;
+        await stock.save();
+      } else {
+        await MaterialStock.create({
+          organizationId: po.organizationId,
+          projectId: po.projectId,
+          indentId: po.indentId,
+          purchaseOrderId: po._id,
+          requesterId: po.requesterId,
+          itemId: item.itemId,
+          unitId: item.unitId,
+
+          purchasedQuantity: extraQty,
+          receivedQuantity: extraQty,
+          issuedQuantity: 0,
+          availableQuantity: extraQty,
+
+          status: "Available",
+        });
+      }
       }
     }
 
