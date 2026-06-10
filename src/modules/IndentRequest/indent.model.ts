@@ -19,8 +19,7 @@ const indentItemSchema = new mongoose.Schema(
     },
 
     price: {
-      type: Number,
-      required: true,   
+      type: Number
   }
  },
   { _id: false }
