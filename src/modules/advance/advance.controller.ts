@@ -94,9 +94,12 @@ export const createAdvance = async (c: Context) => {
   }
 };
 
+
 export const getAllAdvances = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    const creatorScope = loggedInUser?.roleId?.scope;
 
     const {
       page = "1",
@@ -115,9 +118,13 @@ export const getAllAdvances = async (c: Context) => {
 
     const filter: any = await buildAdvanceScopeFilter(loggedInUser);
 
+    if (creatorScope !== "organization" && creatorScope !== "team") {
+      filter.userId = getLoggedInUserId(loggedInUser);
+    }
+
     if (status) filter.status = status;
 
-    if (userId) {
+    if (userId && (creatorScope === "organization" || creatorScope === "team")) {
       if (!isValidObjectId(userId)) {
         return c.json({ success: false, message: "Invalid userId" }, 400);
       }
@@ -125,7 +132,7 @@ export const getAllAdvances = async (c: Context) => {
       filter.userId = new mongoose.Types.ObjectId(userId);
     }
 
-    if (nodeId) {
+    if (nodeId && (creatorScope === "organization" || creatorScope === "team")) {
       if (!isValidObjectId(nodeId)) {
         return c.json({ success: false, message: "Invalid nodeId" }, 400);
       }
@@ -213,11 +220,17 @@ export const getAdvanceById = async (c: Context) => {
     const loggedInUser = c.get("user");
     const id = c.req.param("id");
 
+    const creatorScope = loggedInUser?.roleId?.scope;
+
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid advance id" }, 400);
     }
 
-    const filter = await buildAdvanceScopeFilter(loggedInUser);
+    const filter: any = await buildAdvanceScopeFilter(loggedInUser);
+
+    if (creatorScope !== "organization" && creatorScope !== "team") {
+      filter.userId = getLoggedInUserId(loggedInUser);
+    }
 
     const advance = await Advance.findOne({
       _id: id,
