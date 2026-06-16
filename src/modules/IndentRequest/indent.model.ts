@@ -115,6 +115,10 @@ const indentSchema = new mongoose.Schema(
       default: "Pending",
       index: true,
     },
+    approveRemark: {
+    type: String,
+    default: null,
+  },
 
     requestedBy: {
       type: mongoose.Schema.Types.ObjectId,

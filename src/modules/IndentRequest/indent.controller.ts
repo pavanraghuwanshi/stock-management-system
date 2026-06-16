@@ -660,7 +660,7 @@ export const updateIndentStatus = async (c: Context) => {
     const id = c.req.param("id");
     const body = await c.req.json();
 
-    const { status, rejectionReason } = body;
+    const { status, rejectionReason, approveRemark, items } = body;
 
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid indent id" }, 400);
@@ -703,6 +703,44 @@ export const updateIndentStatus = async (c: Context) => {
       );
     }
 
+    if (status === "Approved" && items !== undefined) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return c.json(
+          { success: false, message: "At least one item is required" },
+          400
+        );
+      }
+
+      for (const item of items) {
+        if (!item.itemId || !item.quantity || !item.unitId) {
+          return c.json(
+            {
+              success: false,
+              message: "itemId, quantity and unitId are required in items",
+            },
+            400
+          );
+        }
+
+        if (!isValidObjectId(item.itemId)) {
+          return c.json({ success: false, message: "Invalid itemId" }, 400);
+        }
+
+        if (!isValidObjectId(item.unitId)) {
+          return c.json({ success: false, message: "Invalid unitId" }, 400);
+        }
+
+        if (Number(item.quantity) <= 0) {
+          return c.json(
+            { success: false, message: "Quantity must be greater than 0" },
+            400
+          );
+        }
+      }
+
+      indent.items = items as any;
+    }
+
     if (scope === "team" && status === "Approved") {
       indent.status = "ManagerApproved";
     } else {
@@ -713,12 +751,14 @@ export const updateIndentStatus = async (c: Context) => {
       indent.approvedBy = getLoggedInUserId(loggedInUser);
       indent.approvedAt = new Date();
       indent.rejectionReason = null;
+      indent.approveRemark = approveRemark || null;
     }
 
     if (status === "Rejected") {
       indent.approvedBy = null;
       indent.approvedAt = null;
       indent.rejectionReason = rejectionReason || null;
+      indent.approveRemark = approveRemark || null;
     }
 
     await indent.save();
