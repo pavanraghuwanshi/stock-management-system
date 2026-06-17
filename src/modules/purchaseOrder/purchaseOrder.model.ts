@@ -89,7 +89,7 @@ const purchaseOrderSchema = new mongoose.Schema(
     items: { type: [poItemSchema], default: [] },
 
     totalAmount: { type: Number, default: 0 },
-
+  images: [{ type: String }],
     status: {
       type: String,
       enum: [

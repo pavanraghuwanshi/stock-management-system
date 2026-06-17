@@ -1,5 +1,7 @@
 import type { Context } from "hono";
 import mongoose from "mongoose";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import { PurchaseOrder } from "./purchaseOrder.model";
 import { MaterialStock } from "../materialStock/materialStock.model";
 import { Indent } from "../IndentRequest/indent.model";
@@ -11,6 +13,20 @@ const getLoggedInUserId = (user: any) => user?._id || user?.id;
 
 const getUserScope = (user: any) => {
   return user?.scope || user?.role?.scope || user?.roleId?.scope;
+};
+
+const getUserRoleName = (user: any) => {
+  return user?.roleName || user?.role?.name || user?.roleId?.name || user?.role;
+};
+
+const canAccessPurchaseOrder = (user: any) => {
+  const scope = getUserScope(user);
+  const roleName = String(getUserRoleName(user) || "").toLowerCase();
+
+  return (
+    ["organization", "team", "admin"].includes(scope) ||
+    ["admin", "organization"].includes(roleName)
+  );
 };
 
 const generatePoNo = async (organizationId: string) => {
@@ -26,7 +42,7 @@ const buildPurchaseOrderScopeFilter = async (loggedInUser: any) => {
     organizationId: loggedInUser.organizationId,
   };
 
-  if (scope === "organization") {
+  if (scope === "organization" || scope === "admin") {
     return filter;
   }
 
@@ -61,11 +77,102 @@ const populatePurchaseOrder = (query: any) => {
     .populate("approvals.approvedBy", "name email mobile");
 };
 
+const parsePurchaseOrderBody = async (c: Context) => {
+  const contentType = c.req.header("content-type") || "";
+
+  if (!contentType.includes("multipart/form-data")) {
+    return {
+      body: await c.req.json(),
+      uploadedImages: [],
+    };
+  }
+
+  const formData = await c.req.parseBody({ all: true });
+
+  const body: any = {
+    indentId: formData.indentId,
+    vendorId: formData.vendorId,
+    vendorName: formData.vendorName,
+    vendorMobile: formData.vendorMobile,
+    vendorAddress: formData.vendorAddress,
+    items:
+      typeof formData.items === "string"
+        ? JSON.parse(formData.items)
+        : [],
+  };
+
+  const files: any[] = [];
+
+  if (Array.isArray(formData.images)) files.push(...formData.images);
+  else if (formData.images) files.push(formData.images);
+
+  if (Array.isArray(formData["images[]"])) files.push(...formData["images[]"]);
+  else if (formData["images[]"]) files.push(formData["images[]"]);
+
+  const uploadedImages: string[] = [];
+
+  if (files.length > 0) {
+    const uploadDir = path.join(process.cwd(), "uploads", "purchase-orders");
+    await mkdir(uploadDir, { recursive: true });
+
+    for (const file of files) {
+      if (!file || typeof file === "string") continue;
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.name}`;
+      const filePath = path.join(uploadDir, fileName);
+
+      await writeFile(filePath, buffer);
+
+      uploadedImages.push(`/uploads/purchase-orders/${fileName}`);
+    }
+  }
+
+  return { body, uploadedImages };
+};
+
+const updateIndentConvertedStatus = async (indent: any, organizationId: string) => {
+  const existingPurchaseOrders = await PurchaseOrder.find({
+    indentId: indent._id,
+    organizationId,
+    isActive: true,
+    status: { $ne: "Cancelled" },
+  })
+    .select("items.itemId")
+    .lean();
+
+  const poItemIds = new Set<string>();
+
+  existingPurchaseOrders.forEach((po: any) => {
+    po.items.forEach((item: any) => {
+      poItemIds.add(String(item.itemId));
+    });
+  });
+
+  const allIndentItemIds = indent.items.map((item: any) => String(item.itemId));
+
+  const allItemsConverted = allIndentItemIds.every((itemId: string) =>
+    poItemIds.has(itemId)
+  );
+
+  indent.status = allItemsConverted ? "ConvertedToPO" : "Approved";
+  await indent.save();
+};
+
 export const createPurchaseOrderFromIndent = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const loggedInUserId = getLoggedInUserId(loggedInUser);
-    const body = await c.req.json();
+
+    const { body, uploadedImages } = await parsePurchaseOrderBody(c);
 
     const {
       indentId,
@@ -101,7 +208,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       return c.json({ success: false, message: "Indent not found" }, 404);
     }
 
-    if (indent.status !== "Approved") {
+    if (!["Approved", "ConvertedToPO"].includes(indent.status)) {
       return c.json(
         {
           success: false,
@@ -111,60 +218,83 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       );
     }
 
-    const oldPo = await PurchaseOrder.findOne({
-      indentId,
-      organizationId: loggedInUser.organizationId,
-      isActive: true,
-    });
-
-    if (oldPo) {
-      return c.json(
-        {
-          success: false,
-          message: "Purchase order already created for this indent",
-        },
-        400
-      );
-    }
-
-    const finalItems =
-      Array.isArray(items) && items.length > 0
-        ? items
-        : indent.items.map((item: any) => ({
-            itemId: item.itemId,
-            unitId: item.unitId,
-            indentQuantity: item.quantity,
-            orderQuantity: item.quantity,
-            rate: 0,
-          }));
-
-    if (!Array.isArray(finalItems) || finalItems.length === 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       return c.json(
         { success: false, message: "At least one PO item is required" },
         400
       );
     }
 
+    const indentItemMap: any = {};
+
+    indent.items.forEach((item: any) => {
+      indentItemMap[String(item.itemId)] = item;
+    });
+
+    const existingPurchaseOrders = await PurchaseOrder.find({
+      indentId,
+      organizationId: loggedInUser.organizationId,
+      isActive: true,
+      status: { $ne: "Cancelled" },
+    })
+      .select("items.itemId")
+      .lean();
+
+    const alreadyPoItemIds = new Set<string>();
+
+    existingPurchaseOrders.forEach((po: any) => {
+      po.items.forEach((item: any) => {
+        alreadyPoItemIds.add(String(item.itemId));
+      });
+    });
+
+    const requestedItemIds = new Set<string>();
     let totalAmount = 0;
 
-    const poItems = finalItems.map((item: any) => {
+    const poItems = items.map((item: any) => {
       if (!item.itemId || !item.unitId || !item.orderQuantity) {
         throw new Error("itemId, unitId and orderQuantity are required");
       }
 
+      if (!indentItemMap[String(item.itemId)]) {
+        throw new Error("Selected item does not belong to this indent");
+      }
+
+      if (alreadyPoItemIds.has(String(item.itemId))) {
+        throw new Error("Purchase order already created for selected item");
+      }
+
+      if (requestedItemIds.has(String(item.itemId))) {
+        throw new Error("Same item cannot be added multiple times in one request");
+      }
+
+      requestedItemIds.add(String(item.itemId));
+
       const orderQuantity = Number(item.orderQuantity);
       const rate = Number(item.rate || 0);
       const amount = orderQuantity * rate;
+
+      if (orderQuantity <= 0) {
+        throw new Error("orderQuantity must be greater than 0");
+      }
 
       totalAmount += amount;
 
       return {
         itemId: item.itemId,
         unitId: item.unitId,
-        indentQuantity: Number(item.indentQuantity || item.orderQuantity || 0),
+        indentQuantity: Number(
+          item.indentQuantity ||
+            indentItemMap[String(item.itemId)]?.quantity ||
+            item.orderQuantity ||
+            0
+        ),
         orderQuantity,
         rate,
         amount,
+        receivedQuantity: 0,
+        issuedToRequesterQuantity: 0,
+        stockQuantity: 0,
       };
     });
 
@@ -180,6 +310,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       vendorName,
       vendorMobile: vendorMobile || null,
       vendorAddress: vendorAddress || null,
+      images: uploadedImages,
       items: poItems,
       totalAmount,
 
@@ -193,12 +324,9 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       approvedAt: new Date(),
     });
 
-    indent.status = "ConvertedToPO";
-    await indent.save();
+    await updateIndentConvertedStatus(indent, loggedInUser.organizationId);
 
-    const populatedPo = await populatePurchaseOrder(
-      PurchaseOrder.findById(po._id)
-    );
+    const populatedPo = await populatePurchaseOrder(PurchaseOrder.findById(po._id));
 
     return c.json(
       {
@@ -227,6 +355,14 @@ export const approvePurchaseOrder = async (c: Context) => {
 export const markPurchaseOrderOrdered = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const id = c.req.param("id");
 
     if (!isValidObjectId(id)) {
@@ -236,9 +372,11 @@ export const markPurchaseOrderOrdered = async (c: Context) => {
       );
     }
 
+    const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
+
     const po = await PurchaseOrder.findOne({
       _id: id,
-      organizationId: loggedInUser.organizationId,
+      ...scopeFilter,
       isActive: true,
     });
 
@@ -271,6 +409,14 @@ export const markPurchaseOrderOrdered = async (c: Context) => {
 export const receivePurchaseOrderMaterial = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const id = c.req.param("id");
     const body = await c.req.json();
 
@@ -283,9 +429,11 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
       );
     }
 
+    const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
+
     const po = await PurchaseOrder.findOne({
       _id: id,
-      organizationId: loggedInUser.organizationId,
+      ...scopeFilter,
       isActive: true,
     });
 
@@ -313,13 +461,32 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
       );
 
       if (!poItem) {
+        return c.json({ success: false, message: "PO item not found" }, 400);
+      }
+
+      const receivedQty = Number(receivedItem.receivedQuantity || 0);
+
+      if (receivedQty <= 0) {
         return c.json(
-          { success: false, message: "PO item not found" },
+          { success: false, message: "receivedQuantity must be greater than 0" },
           400
         );
       }
 
-      const receivedQty = Number(receivedItem.receivedQuantity || 0);
+      const oldReceivedQty = Number(poItem.receivedQuantity || 0);
+      const newReceivedQty = oldReceivedQty + receivedQty;
+
+      if (newReceivedQty > Number(poItem.orderQuantity)) {
+        return c.json(
+          {
+            success: false,
+            message: "Received quantity cannot be greater than order quantity",
+          },
+          400
+        );
+      }
+
+      poItem.receivedQuantity = newReceivedQty;
 
       let stock = await MaterialStock.findOne({
         organizationId: po.organizationId,
@@ -356,11 +523,11 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
     }
 
     const allReceived = po.items.every(
-      (item: any) => Number(item.receivedQuantity) >= Number(item.orderQuantity)
+      (item: any) =>
+        Number(item.receivedQuantity || 0) >= Number(item.orderQuantity || 0)
     );
 
     po.status = allReceived ? "Received" : "PartiallyReceived";
-
     await po.save();
 
     const populatedPo = await populatePurchaseOrder(PurchaseOrder.findById(po._id));
@@ -378,6 +545,14 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
 export const issueMaterialToRequester = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const id = c.req.param("id");
 
     if (!isValidObjectId(id)) {
@@ -387,9 +562,11 @@ export const issueMaterialToRequester = async (c: Context) => {
       );
     }
 
+    const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
+
     const po = await PurchaseOrder.findOne({
       _id: id,
-      organizationId: loggedInUser.organizationId,
+      ...scopeFilter,
       isActive: true,
     });
 
@@ -414,39 +591,21 @@ export const issueMaterialToRequester = async (c: Context) => {
       item.issuedToRequesterQuantity = issueQty;
       item.stockQuantity = extraQty;
 
-      if (extraQty > 0) {
-        const stock = await MaterialStock.findOne({
-          organizationId: po.organizationId,
-          projectId: po.projectId,
-          itemId: item.itemId,
-          unitId: item.unitId,
-          sourceType: "PurchaseOrder",
-          sourceId: po._id,
-        });
+      const stock = await MaterialStock.findOne({
+        organizationId: po.organizationId,
+        projectId: po.projectId,
+        indentId: po.indentId,
+        purchaseOrderId: po._id,
+        requesterId: po.requesterId,
+        itemId: item.itemId,
+        unitId: item.unitId,
+      });
 
-        if (stock) {
-          stock.purchasedQuantity += extraQty;
-          stock.receivedQuantity += extraQty;
-          stock.availableQuantity += extraQty;
-          await stock.save();
-        } else {
-          await MaterialStock.create({
-            organizationId: po.organizationId,
-            projectId: po.projectId,
-            indentId: po.indentId,
-            purchaseOrderId: po._id,
-            requesterId: po.requesterId,
-            itemId: item.itemId,
-            unitId: item.unitId,
-
-            purchasedQuantity: extraQty,
-            receivedQuantity: extraQty,
-            issuedQuantity: 0,
-            availableQuantity: extraQty,
-
-            status: "Available",
-          });
-        }
+      if (stock) {
+        stock.issuedQuantity = issueQty;
+        stock.availableQuantity = extraQty;
+        stock.status = extraQty > 0 ? "Available" : "Issued";
+        await stock.save();
       }
     }
 
@@ -469,6 +628,13 @@ export const getAllPurchaseOrders = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
 
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const {
       page = "1",
       limit = "10",
@@ -476,6 +642,8 @@ export const getAllPurchaseOrders = async (c: Context) => {
       status,
       projectId,
       indentId,
+      vendorId,
+      itemId,
     } = c.req.query();
 
     const pageNumber = Math.max(Number(page) || 1, 1);
@@ -503,6 +671,20 @@ export const getAllPurchaseOrders = async (c: Context) => {
         return c.json({ success: false, message: "Invalid indentId" }, 400);
       }
       filter.indentId = indentId;
+    }
+
+    if (vendorId) {
+      if (!isValidObjectId(vendorId)) {
+        return c.json({ success: false, message: "Invalid vendorId" }, 400);
+      }
+      filter.vendorId = vendorId;
+    }
+
+    if (itemId) {
+      if (!isValidObjectId(itemId)) {
+        return c.json({ success: false, message: "Invalid itemId" }, 400);
+      }
+      filter["items.itemId"] = itemId;
     }
 
     if (search) {
@@ -539,6 +721,14 @@ export const getAllPurchaseOrders = async (c: Context) => {
 export const getPurchaseOrderById = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const id = c.req.param("id");
 
     if (!isValidObjectId(id)) {
@@ -574,6 +764,14 @@ export const getPurchaseOrderById = async (c: Context) => {
 export const cancelPurchaseOrder = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
+
+    if (!canAccessPurchaseOrder(loggedInUser)) {
+      return c.json(
+        { success: false, message: "Only admin or team scope can access purchase order" },
+        403
+      );
+    }
+
     const id = c.req.param("id");
 
     if (!isValidObjectId(id)) {
@@ -595,7 +793,7 @@ export const cancelPurchaseOrder = async (c: Context) => {
       return c.json({ success: false, message: "Purchase order not found" }, 404);
     }
 
-    if (["Received", "Issued"].includes(po.status)) {
+    if (["Received", "PartiallyReceived", "Issued"].includes(po.status)) {
       return c.json(
         { success: false, message: "Received or issued PO cannot be cancelled" },
         400
@@ -604,6 +802,16 @@ export const cancelPurchaseOrder = async (c: Context) => {
 
     po.status = "Cancelled";
     await po.save();
+
+    const indent = await Indent.findOne({
+      _id: po.indentId,
+      organizationId: loggedInUser.organizationId,
+      isActive: true,
+    });
+
+    if (indent) {
+      await updateIndentConvertedStatus(indent, loggedInUser.organizationId);
+    }
 
     const populatedPo = await populatePurchaseOrder(PurchaseOrder.findById(po._id));
 
