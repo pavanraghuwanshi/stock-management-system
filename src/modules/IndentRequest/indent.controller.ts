@@ -30,20 +30,10 @@ const buildIndentScopeFilter = async (loggedInUser: any) => {
   }
 
   if (scope === "team") {
-    const scopeFilter: any = await buildScopeFilter(loggedInUser);
-
-    if (scopeFilter.ownerId?.$in) {
-      filter.userId = { $in: scopeFilter.ownerId.$in };
-    } else if (scopeFilter.ownerId) {
-      filter.userId = scopeFilter.ownerId;
-    } else {
-      filter.userId = loggedInUserId;
-    }
-
     return filter;
   }
 
-  filter.userId = loggedInUserId;
+  filter.ownerId = loggedInUserId;
   return filter;
 };
 
@@ -437,19 +427,17 @@ export const getIndentById = async (c: Context) => {
     const scopeFilter: any = await buildIndentScopeFilter(loggedInUser);
 
     const query: any = {
-      _id: id,
-      organizationId: scopeFilter.organizationId,
+      ...scopeFilter,
       isActive: true,
     };
-
-    if (scope !== "team") {
-      Object.assign(query, scopeFilter);
-    }
 
     if (scope === "organization") {
       query.status = "ManagerApproved";
     }
 
+    if (scope === "team") {
+      query.status = "Pending";
+    }
     const indent = await populateIndent(Indent.findOne(query));
 
     if (!indent) {
