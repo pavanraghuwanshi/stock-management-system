@@ -6,6 +6,27 @@ import { buildScopeFilter } from "../../utils/buildScopeFilter";
 const isMongoId = (id: string): boolean =>
   mongoose.Types.ObjectId.isValid(id);
 
+
+const buildGroupScopeFilter = (user: any) => {
+  const scope = user?.scope || user?.role?.scope || user?.roleId?.scope;
+  const userId = user?._id || user?.id;
+
+  const filter: any = {
+    organizationId: user.organizationId,
+  };
+
+  if (scope === "organization") {
+    return filter;
+  }
+
+  if (scope === "team") {
+    return filter;
+  }
+
+  filter.ownerId = userId;
+  return filter;
+};
+
 export const createGroup = async (c: Context) => {
   try {
     const user = c.get("user");
@@ -30,8 +51,8 @@ export const createGroup = async (c: Context) => {
     const group = await Group.create({
       ...body,
       organizationId: user.organizationId,
-      ownerId: user._id,
-      createdBy: user._id,
+      ownerId: user._id || user.id,
+      createdBy: user._id || user.id,
     });
 
     return c.json(
@@ -50,7 +71,7 @@ export const createGroup = async (c: Context) => {
 export const getGroups = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildGroupScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -96,7 +117,7 @@ export const getGroups = async (c: Context) => {
 export const getGroupById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildGroupScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -128,7 +149,7 @@ export const getGroupById = async (c: Context) => {
 export const updateGroup = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildGroupScopeFilter(user);
     const id = c.req.param("id");
     const body = await c.req.json();
 
@@ -188,7 +209,7 @@ export const updateGroup = async (c: Context) => {
 export const deleteGroup = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildGroupScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
