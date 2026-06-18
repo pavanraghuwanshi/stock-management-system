@@ -6,6 +6,26 @@ import { buildScopeFilter } from "../../utils/buildScopeFilter";
 const isMongoId = (id: string): boolean =>
   mongoose.Types.ObjectId.isValid(id);
 
+const buildUnitScopeFilter = (user: any) => {
+  const scope = user?.scope || user?.role?.scope || user?.roleId?.scope;
+  const userId = user?._id || user?.id;
+
+  const filter: any = {
+    organizationId: user.organizationId,
+  };
+
+  if (scope === "organization") {
+    return filter;
+  }
+
+  if (scope === "team") {
+    return filter;
+  }
+
+  filter.ownerId = userId;
+  return filter;
+};
+
 export const createUnit = async (c: Context) => {
   try {
     const user = c.get("user");
@@ -33,8 +53,8 @@ export const createUnit = async (c: Context) => {
     const unit = await Unit.create({
       ...body,
       organizationId: user.organizationId,
-      ownerId: user._id,
-      createdBy: user._id,
+      ownerId: user._id || user.id,
+      createdBy: user._id || user.id,
     });
 
     return c.json(
@@ -53,7 +73,7 @@ export const createUnit = async (c: Context) => {
 export const getUnits = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildUnitScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -98,7 +118,7 @@ export const getUnits = async (c: Context) => {
 export const getUnitById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildUnitScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -127,7 +147,7 @@ export const getUnitById = async (c: Context) => {
 export const updateUnit = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildUnitScopeFilter(user);
     const id = c.req.param("id");
     const body = await c.req.json();
 
@@ -187,7 +207,7 @@ export const updateUnit = async (c: Context) => {
 export const deleteUnit = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildUnitScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
