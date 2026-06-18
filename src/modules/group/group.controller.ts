@@ -8,7 +8,7 @@ const isMongoId = (id: string): boolean =>
 
 
 const buildGroupScopeFilter = (user: any) => {
-  const scope = user?.scope || user?.role?.scope || user?.roleId?.scope;
+  const scope = user?.roleId?.scope;
   const userId = user?._id || user?.id;
 
   const filter: any = {

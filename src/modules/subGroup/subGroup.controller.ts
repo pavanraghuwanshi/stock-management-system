@@ -2,9 +2,26 @@ import type { Context } from "hono";
 import mongoose from "mongoose";
 import { SubGroup } from "./subGroup.model";
 import { buildScopeFilter } from "../../utils/buildScopeFilter";
+import { Group } from "../group/group.model";
 
 const isMongoId = (id: string): boolean =>
   mongoose.Types.ObjectId.isValid(id);
+
+const buildSubGroupScopeFilter = (user: any) => {
+  const scope = user?.roleId?.scope;
+  const userId = user?._id || user?.id;
+
+  const filter: any = {
+    organizationId: user.organizationId,
+  };
+
+  if (!scope || scope === "organization" || scope === "team") {
+    return filter;
+  }
+
+  filter.ownerId = userId;
+  return filter;
+};
 
 export const createSubGroup = async (c: Context) => {
   try {
@@ -20,6 +37,15 @@ export const createSubGroup = async (c: Context) => {
 
     if (!isMongoId(body.groupId)) {
       return c.json({ success: false, message: "Invalid groupId" }, 400);
+    }
+
+    const group = await Group.findOne({
+      _id: body.groupId,
+      organizationId: user.organizationId,
+    });
+
+    if (!group) {
+      return c.json({ success: false, message: "Group not found" }, 404);
     }
 
     const exists = await SubGroup.findOne({
@@ -38,8 +64,8 @@ export const createSubGroup = async (c: Context) => {
     const subGroup = await SubGroup.create({
       ...body,
       organizationId: user.organizationId,
-      ownerId: user._id,
-      createdBy: user._id,
+      ownerId: user._id || user.id,
+      createdBy: user._id || user.id,
     });
 
     const populatedSubGroup = await SubGroup.findById(subGroup._id).populate(
@@ -63,7 +89,7 @@ export const createSubGroup = async (c: Context) => {
 export const getSubGroups = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildSubGroupScopeFilter(user);
 
     const page = Number(c.req.query("page")) || 1;
     const limit = Number(c.req.query("limit")) || 10;
@@ -119,7 +145,7 @@ export const getSubGroups = async (c: Context) => {
 export const getSubGroupById = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildSubGroupScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {
@@ -151,7 +177,7 @@ export const getSubGroupById = async (c: Context) => {
 export const updateSubGroup = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildSubGroupScopeFilter(user);
     const id = c.req.param("id");
     const body = await c.req.json();
 
@@ -165,6 +191,17 @@ export const updateSubGroup = async (c: Context) => {
 
     if (body.groupId && !isMongoId(body.groupId)) {
       return c.json({ success: false, message: "Invalid groupId" }, 400);
+    }
+
+    if (body.groupId) {
+      const group = await Group.findOne({
+        _id: body.groupId,
+        organizationId: user.organizationId,
+      });
+
+      if (!group) {
+        return c.json({ success: false, message: "Group not found" }, 404);
+      }
     }
 
     if (body.name || body.groupId) {
@@ -225,7 +262,7 @@ export const updateSubGroup = async (c: Context) => {
 export const deleteSubGroup = async (c: Context) => {
   try {
     const user = c.get("user");
-    const scopeFilter = await buildScopeFilter(user);
+    const scopeFilter = buildSubGroupScopeFilter(user);
     const id = c.req.param("id");
 
     if (!id) {

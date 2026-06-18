@@ -7,7 +7,7 @@ const isMongoId = (id: string): boolean =>
   mongoose.Types.ObjectId.isValid(id);
 
 const buildUnitScopeFilter = (user: any) => {
-  const scope = user?.scope || user?.role?.scope || user?.roleId?.scope;
+  const scope = user?.roleId?.scope;
   const userId = user?._id || user?.id;
 
   const filter: any = {
