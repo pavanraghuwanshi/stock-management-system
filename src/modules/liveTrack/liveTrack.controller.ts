@@ -112,6 +112,27 @@ export const updateMyLiveLocation = async (c: Context) => {
 };
 
 
+// scope builder
+const buildLiveTrackScopeFilter = (user: any) => {
+  const scope = user?.roleId?.scope;
+  const userId = user?._id || user?.id;
+
+  const filter: any = {
+    organizationId: new mongoose.Types.ObjectId(user.organizationId),
+  };
+
+  if (scope === "organization") {
+    return filter;
+  }
+
+  if (scope === "team") {
+    return filter;
+  }
+
+  filter.ownerId = new mongoose.Types.ObjectId(userId);
+  return filter;
+};
+
 // get live users
 export const getLiveTracks = async (c: Context) => {
   try {
@@ -141,23 +162,25 @@ export const getLiveTracks = async (c: Context) => {
         );
       }
 
-      match.organizationId = new mongoose.Types.ObjectId(user.organizationId);
-
-      if (creatorScope !== "organization") {
-        match.userId = new mongoose.Types.ObjectId(user._id);
-      }
+      Object.assign(match, buildLiveTrackScopeFilter(user));
     }
 
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       const requestedUserId = new mongoose.Types.ObjectId(userId);
 
-      if (creatorRoleName === "superAdmin" || creatorScope === "organization") {
+      if (
+        creatorRoleName === "superAdmin" ||
+        creatorScope === "organization" ||
+        creatorScope === "team"
+      ) {
         match.userId = requestedUserId;
-      } else if (String(userId) !== String(user._id)) {
+      } else if (String(userId) !== String(user._id || user.id)) {
         return c.json(
           { success: false, message: "You can only view your own live track" },
           403
         );
+      } else {
+        match.userId = requestedUserId;
       }
     }
 
