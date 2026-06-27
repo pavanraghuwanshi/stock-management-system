@@ -153,6 +153,7 @@ export const createIndent = async (c: Context) => {
       storageLocation,
       items = [],
       status,
+      indentType 
     } = body;
 
     if (!projectId || !indentFor) {
@@ -161,6 +162,13 @@ export const createIndent = async (c: Context) => {
           success: false,
           message: "projectId and indentFor are required",
         },
+        400
+      );
+    }
+
+    if (!["material", "asset"].includes(indentType)) {
+      return c.json(
+        { success: false, message: "Invalid indentType" },
         400
       );
     }
@@ -264,7 +272,7 @@ export const createIndent = async (c: Context) => {
         : null,
 
       indentFor,
-
+      indentType,
       towerId:
         indentFor === "tower" || indentFor === "floor" || indentFor === "flat"
           ? towerId || null

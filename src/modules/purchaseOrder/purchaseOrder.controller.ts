@@ -6,6 +6,7 @@ import { PurchaseOrder } from "./purchaseOrder.model";
 import { MaterialStock } from "../materialStock/materialStock.model";
 import { Indent } from "../IndentRequest/indent.model";
 import { buildScopeFilter } from "../../utils/buildScopeFilter";
+import Asset from "../assets/asset.model";
 
 const isValidObjectId = (id: any) => mongoose.Types.ObjectId.isValid(id);
 
@@ -453,7 +454,10 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
     const { items = [] } = body;
 
     if (!isValidObjectId(id)) {
-      return c.json({ success: false, message: "Invalid purchase order id" }, 400);
+      return c.json(
+        { success: false, message: "Invalid purchase order id" },
+        400
+      );
     }
 
     const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
@@ -468,16 +472,25 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
       return c.json({ success: false, message: "Purchase order not found" }, 404);
     }
 
-    if (po.purchaseOrderType !== "material") {
+    if (!["material", "assets"].includes(po.purchaseOrderType)) {
       return c.json(
-        { success: false, message: "Only material purchase order can be received in material stock" },
+        { success: false, message: "Invalid purchase order type" },
         400
       );
     }
 
     if (!["Approved", "Ordered", "PartiallyReceived"].includes(po.status)) {
       return c.json(
-        { success: false, message: "Material cannot be received in current status" },
+        { success: false, message: "Purchase order cannot be received in current status" },
+        400
+      );
+    }
+
+    const now = new Date();
+
+    if (po.expectedDeliveryDate && now > new Date(po.expectedDeliveryDate)) {
+      return c.json(
+        { success: false, message: "Purchase order cannot be received after expected delivery date" },
         400
       );
     }
@@ -512,31 +525,18 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
 
       if (newReceivedQty > Number(poItem.orderQuantity)) {
         return c.json(
-          { success: false, message: "Received quantity cannot be greater than order quantity" },
+          {
+            success: false,
+            message: "Received quantity cannot be greater than order quantity",
+          },
           400
         );
       }
 
       poItem.receivedQuantity = newReceivedQty;
 
-      let stock = await MaterialStock.findOne({
-        organizationId: po.organizationId,
-        projectId: po.projectId,
-        indentId: po.indentId,
-        purchaseOrderId: po._id,
-        requesterId: po.requesterId,
-        itemId: poItem.itemId,
-        unitId: poItem.unitId,
-      });
-
-      if (stock) {
-        stock.receivedQuantity += receivedQty;
-        stock.availableQuantity += receivedQty;
-        stock.purchasedQuantity = poItem.orderQuantity;
-        stock.status = stock.availableQuantity > 0 ? "Available" : "Issued";
-        await stock.save();
-      } else {
-        await MaterialStock.create({
+      if (po.purchaseOrderType === "material") {
+        let stock = await MaterialStock.findOne({
           organizationId: po.organizationId,
           projectId: po.projectId,
           indentId: po.indentId,
@@ -544,12 +544,49 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
           requesterId: po.requesterId,
           itemId: poItem.itemId,
           unitId: poItem.unitId,
-          purchasedQuantity: poItem.orderQuantity,
-          receivedQuantity: receivedQty,
-          issuedQuantity: 0,
-          availableQuantity: receivedQty,
-          status: "Available",
         });
+
+        if (stock) {
+          stock.receivedQuantity += receivedQty;
+          stock.availableQuantity += receivedQty;
+          stock.purchasedQuantity = poItem.orderQuantity;
+          stock.status = stock.availableQuantity > 0 ? "Available" : "Issued";
+          await stock.save();
+        } else {
+          await MaterialStock.create({
+            organizationId: po.organizationId,
+            projectId: po.projectId,
+            indentId: po.indentId,
+            purchaseOrderId: po._id,
+            requesterId: po.requesterId,
+            itemId: poItem.itemId,
+            unitId: poItem.unitId,
+            purchasedQuantity: poItem.orderQuantity,
+            receivedQuantity: receivedQty,
+            issuedQuantity: 0,
+            availableQuantity: receivedQty,
+            status: "Available",
+          });
+        }
+      }
+
+      if (po.purchaseOrderType === "assets") {
+        const itemName =
+          receivedItem.name ||
+          receivedItem.assetName ||
+          `Asset-${String(poItem.itemId)}`;
+
+        for (let i = 0; i < receivedQty; i++) {
+          await Asset.create({
+            name: itemName,
+            type: receivedItem.type || "assets",
+            serialNumber: receivedItem.serialNumbers?.[i] || null,
+            issuedDate: new Date(),
+            status: "Available",
+            maintenanceDueDate: receivedItem.maintenanceDueDate || null,
+            extraNote: receivedItem.extraNote || null,
+          });
+        }
       }
     }
 
@@ -565,7 +602,10 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
 
     return c.json({
       success: true,
-      message: "Purchase order material received successfully",
+      message:
+        po.purchaseOrderType === "assets"
+          ? "Purchase order assets received and added successfully"
+          : "Purchase order material received successfully",
       data: populatedPo,
     });
   } catch (error: any) {

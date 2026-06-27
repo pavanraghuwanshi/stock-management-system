@@ -164,7 +164,11 @@ const indentSchema = new mongoose.Schema(
         size: Number,
       },
     ],
-
+    indentType: {
+      type: String,
+      enum: ["material", "asset"],
+      default: "material",
+    },
     isActive: {
       type: Boolean,
       default: true,
