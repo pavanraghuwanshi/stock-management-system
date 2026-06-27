@@ -59,6 +59,12 @@ const purchaseOrderSchema = new mongoose.Schema(
 
     poNo: { type: String, required: true, unique: true },
 
+    purchaseOrderType: {
+      type: String,
+      enum: ["material", "assets"],
+      default: "material",
+    },
+
     indentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Indent",
@@ -86,10 +92,23 @@ const purchaseOrderSchema = new mongoose.Schema(
     vendorMobile: { type: String, default: null },
     vendorAddress: { type: String, default: null },
 
+    validFrom: { type: Date, default: null },
+    validTo: { type: Date, default: null },
+    expectedDeliveryDate: { type: Date, default: null },
+
+    paymentTerm: { type: String, default: null },
+    paymentType: { type: String, default: null },
+
+    remark: { type: String, default: null },
+    notes: { type: String, default: null },
+
     items: { type: [poItemSchema], default: [] },
 
     totalAmount: { type: Number, default: 0 },
-  images: [{ type: String }],
+
+    images: [{ type: String }],
+    attachedFiles: [{ type: String }],
+
     status: {
       type: String,
       enum: [

@@ -181,6 +181,15 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       vendorMobile,
       vendorAddress,
       items = [],
+
+      purchaseOrderType = "material", // material / assets
+      validFrom,
+      validTo,
+      expectedDeliveryDate,
+      paymentTerm,
+      paymentType,
+      remark,
+      notes,
     } = body;
 
     if (!indentId || !vendorId) {
@@ -196,6 +205,13 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
 
     if (!isValidObjectId(vendorId)) {
       return c.json({ success: false, message: "Invalid vendorId" }, 400);
+    }
+
+    if (!["material", "assets"].includes(purchaseOrderType)) {
+      return c.json(
+        { success: false, message: "purchaseOrderType must be material or assets" },
+        400
+      );
     }
 
     const indent = await Indent.findOne({
@@ -307,10 +323,24 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       vendorId,
       projectId: indent.projectId,
       requesterId: indent.userId,
+
+      purchaseOrderType,
+
       vendorName,
       vendorMobile: vendorMobile || null,
       vendorAddress: vendorAddress || null,
+
+      validFrom: validFrom || null,
+      validTo: validTo || null,
+      expectedDeliveryDate: expectedDeliveryDate || null,
+      paymentTerm: paymentTerm || null,
+      paymentType: paymentType || null,
+      remark: remark || null,
+      notes: notes || null,
+
       images: uploadedImages,
+      attachedFiles: uploadedImages,
+
       items: poItems,
       totalAmount,
 
@@ -423,10 +453,7 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
     const { items = [] } = body;
 
     if (!isValidObjectId(id)) {
-      return c.json(
-        { success: false, message: "Invalid purchase order id" },
-        400
-      );
+      return c.json({ success: false, message: "Invalid purchase order id" }, 400);
     }
 
     const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
@@ -439,6 +466,13 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
 
     if (!po) {
       return c.json({ success: false, message: "Purchase order not found" }, 404);
+    }
+
+    if (po.purchaseOrderType !== "material") {
+      return c.json(
+        { success: false, message: "Only material purchase order can be received in material stock" },
+        400
+      );
     }
 
     if (!["Approved", "Ordered", "PartiallyReceived"].includes(po.status)) {
@@ -478,10 +512,7 @@ export const receivePurchaseOrderMaterial = async (c: Context) => {
 
       if (newReceivedQty > Number(poItem.orderQuantity)) {
         return c.json(
-          {
-            success: false,
-            message: "Received quantity cannot be greater than order quantity",
-          },
+          { success: false, message: "Received quantity cannot be greater than order quantity" },
           400
         );
       }
@@ -556,10 +587,7 @@ export const issueMaterialToRequester = async (c: Context) => {
     const id = c.req.param("id");
 
     if (!isValidObjectId(id)) {
-      return c.json(
-        { success: false, message: "Invalid purchase order id" },
-        400
-      );
+      return c.json({ success: false, message: "Invalid purchase order id" }, 400);
     }
 
     const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
@@ -572,6 +600,13 @@ export const issueMaterialToRequester = async (c: Context) => {
 
     if (!po) {
       return c.json({ success: false, message: "Purchase order not found" }, 404);
+    }
+
+    if (po.purchaseOrderType !== "material") {
+      return c.json(
+        { success: false, message: "Only material purchase order can be issued to requester" },
+        400
+      );
     }
 
     if (!["Received", "PartiallyReceived"].includes(po.status)) {
@@ -644,6 +679,7 @@ export const getAllPurchaseOrders = async (c: Context) => {
       indentId,
       vendorId,
       itemId,
+      purchaseOrderType,
     } = c.req.query();
 
     const pageNumber = Math.max(Number(page) || 1, 1);
@@ -658,6 +694,17 @@ export const getAllPurchaseOrders = async (c: Context) => {
     };
 
     if (status) filter.status = status;
+
+    if (purchaseOrderType) {
+      if (!["material", "assets"].includes(purchaseOrderType)) {
+        return c.json(
+          { success: false, message: "purchaseOrderType must be material or assets" },
+          400
+        );
+      }
+
+      filter.purchaseOrderType = purchaseOrderType;
+    }
 
     if (projectId) {
       if (!isValidObjectId(projectId)) {
@@ -692,6 +739,10 @@ export const getAllPurchaseOrders = async (c: Context) => {
         { poNo: { $regex: search, $options: "i" } },
         { vendorName: { $regex: search, $options: "i" } },
         { vendorMobile: { $regex: search, $options: "i" } },
+        { paymentTerm: { $regex: search, $options: "i" } },
+        { paymentType: { $regex: search, $options: "i" } },
+        { remark: { $regex: search, $options: "i" } },
+        { notes: { $regex: search, $options: "i" } },
       ];
     }
 
