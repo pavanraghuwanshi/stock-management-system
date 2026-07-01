@@ -113,6 +113,51 @@ const parseGatePassBody = async (c: Context) => {
   return { body, uploadedImages };
 };
 
+const parseGatePassVerificationBody = async (c: Context) => {
+  const contentType = c.req.header("content-type") || "";
+
+  if (!contentType.includes("multipart/form-data")) {
+    const body = await c.req.json();
+    return {
+      body,
+      uploadedImages: [],
+    };
+  }
+
+  const formData = await c.req.parseBody({ all: true });
+  const body: any = {
+    verificationNote: formData.verificationNote || formData.note || null,
+  };
+
+  const files: any[] = [];
+
+  if (Array.isArray(formData.images)) files.push(...formData.images);
+  else if (formData.images) files.push(formData.images);
+
+  if (Array.isArray(formData["images[]"])) files.push(...formData["images[]"]);
+  else if (formData["images[]"]) files.push(formData["images[]"]);
+
+  const uploadedImages: string[] = [];
+
+  if (files.length > 0) {
+    const uploadDir = path.join(process.cwd(), "uploads", "gate-passes");
+    await mkdir(uploadDir, { recursive: true });
+
+    for (const file of files) {
+      if (!file || typeof file === "string") continue;
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${file.name}`;
+      const filePath = path.join(uploadDir, fileName);
+
+      await writeFile(filePath, buffer);
+      uploadedImages.push(`/uploads/gate-passes/${fileName}`);
+    }
+  }
+
+  return { body, uploadedImages };
+};
+
 export const createGatePass = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
@@ -219,6 +264,64 @@ export const createGatePass = async (c: Context) => {
   }
 };
 
+export const verifyGatePassAtLocation = async (c: Context) => {
+  try {
+    const loggedInUser = c.get("user");
+
+    if (!canAccessGatePass(loggedInUser)) {
+      return c.json({ success: false, message: "Only admin or team scope can verify gate pass" }, 403);
+    }
+
+    const id = c.req.param("id");
+
+    if (!isValidObjectId(id)) {
+      return c.json({ success: false, message: "Invalid gate pass id" }, 400);
+    }
+
+    const { body, uploadedImages } = await parseGatePassVerificationBody(c);
+    const verificationNote = String(body?.verificationNote || "").trim();
+
+    const gatePass: any = await GatePass.findOne({
+      _id: id,
+      organizationId: loggedInUser.organizationId,
+      isActive: true,
+    });
+
+    if (!gatePass) {
+      return c.json({ success: false, message: "Gate pass not found" }, 404);
+    }
+
+    if (gatePass.status !== "PendingApproval") {
+      return c.json({ success: false, message: "Only pending gate pass can be verified" }, 400);
+    }
+
+    if (!uploadedImages.length && !verificationNote) {
+      return c.json({ success: false, message: "Provide at least one photo or verification note" }, 400);
+    }
+
+    if (uploadedImages.length > 0) {
+      gatePass.images = [...(gatePass.images || []), ...uploadedImages];
+    }
+
+    if (verificationNote) {
+      gatePass.verificationNote = verificationNote;
+    }
+
+    gatePass.isVerifiedAtLocation = true;
+    gatePass.verifiedBy = getLoggedInUserId(loggedInUser);
+    gatePass.verifiedAt = new Date();
+    await gatePass.save();
+
+    return c.json({
+      success: true,
+      message: "Gate pass verified at location successfully",
+      data: gatePass,
+    });
+  } catch (error: any) {
+    return c.json({ success: false, message: error.message }, 400);
+  }
+};
+
 export const approveGatePass = async (c: Context) => {
   try {
     const loggedInUser = c.get("user");
@@ -251,6 +354,10 @@ export const approveGatePass = async (c: Context) => {
 
     if (gatePass.isStockPosted) {
       return c.json({ success: false, message: "Gate pass already posted to stock/assets" }, 400);
+    }
+
+    if (!gatePass.isVerifiedAtLocation) {
+      return c.json({ success: false, message: "Gate pass must be verified at location before approval" }, 400);
     }
 
     const po: any = await PurchaseOrder.findOne({

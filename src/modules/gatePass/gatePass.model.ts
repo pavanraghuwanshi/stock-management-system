@@ -15,6 +15,10 @@ export interface IGatePass extends Document {
   items: any[];
   status: "PendingApproval" | "Approved" | "Rejected";
   isStockPosted: boolean;
+  isVerifiedAtLocation: boolean;
+  verificationNote?: string;
+  verifiedBy?: mongoose.Types.ObjectId;
+  verifiedAt?: Date;
   approvedBy?: mongoose.Types.ObjectId;
   approvedAt?: Date;
   rejectedReason?: string;
@@ -55,6 +59,10 @@ const GatePassSchema = new Schema(
       default: "PendingApproval",
     },
     isStockPosted: { type: Boolean, default: false },
+    isVerifiedAtLocation: { type: Boolean, default: false },
+    verificationNote: String,
+    verifiedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    verifiedAt: Date,
     approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
     rejectedReason: String,
