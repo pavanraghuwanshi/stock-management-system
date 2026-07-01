@@ -30,6 +30,9 @@ import projectExtraRoutes from "./modules/projectDocument/projectDocument.route"
 import  approvalFlowRoutes  from "./modules/approvalFlow/aapprovalFlow.route";
 import purchaseOrderRoutes from "./modules/purchaseOrder/purchaseOrder.route";
 import materialIssueRoutes from "./modules/materialIssue/materialIssue.route";
+import gatePassRoutes from "./modules/gatePass/getPass.route";
+
+
 
 const routes = new Hono();
 
@@ -68,5 +71,7 @@ routes.route("/projects", projectExtraRoutes);
 routes.route("/approval-flow", approvalFlowRoutes);
 routes.route("/purchase-orders", purchaseOrderRoutes);
 routes.route("/material-issues", materialIssueRoutes);
+routes.route("/gate-passes", gatePassRoutes);
+
 
 export default routes;

@@ -296,6 +296,7 @@ export const createIndent = async (c: Context) => {
       nodeId: loggedInUser.primaryNodeId || null,
       approvedBy: finalStatus === "Approved" ? loggedInUserId : null,
       approvedAt: finalStatus === "Approved" ? new Date() : null,
+      
     });
 
     const populatedIndent = await populateIndent(Indent.findById(indent._id));

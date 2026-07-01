@@ -4,7 +4,6 @@ import {
   createPurchaseOrderFromIndent,
   getAllPurchaseOrders,
   getPurchaseOrderById,
-  approvePurchaseOrder,
   markPurchaseOrderOrdered,
   receivePurchaseOrderMaterial,
   issueMaterialToRequester,
@@ -19,7 +18,6 @@ purchaseOrderRoutes.post("/", createPurchaseOrderFromIndent);
 purchaseOrderRoutes.get("/", getAllPurchaseOrders);
 purchaseOrderRoutes.get("/:id", getPurchaseOrderById);
 
-purchaseOrderRoutes.patch("/approve/:id", approvePurchaseOrder);
 purchaseOrderRoutes.patch("/ordered/:id", markPurchaseOrderOrdered);
 purchaseOrderRoutes.patch("/receive/:id", receivePurchaseOrderMaterial);
 purchaseOrderRoutes.patch("/issue/:id", issueMaterialToRequester);

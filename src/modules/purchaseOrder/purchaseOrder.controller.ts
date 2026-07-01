@@ -21,13 +21,10 @@ const getUserRoleName = (user: any) => {
 };
 
 const canAccessPurchaseOrder = (user: any) => {
-  const scope = getUserScope(user);
+  const scope = String(getUserScope(user) || "").toLowerCase();
   const roleName = String(getUserRoleName(user) || "").toLowerCase();
 
-  return (
-    ["organization", "team", "admin"].includes(scope) ||
-    ["admin", "organization"].includes(roleName)
-  );
+  return ["organization", "team", "user"].includes(scope) || ["organization", "team", "user"].includes(roleName);
 };
 
 const generatePoNo = async (organizationId: string) => {
@@ -43,7 +40,7 @@ const buildPurchaseOrderScopeFilter = async (loggedInUser: any) => {
     organizationId: loggedInUser.organizationId,
   };
 
-  if (scope === "organization" || scope === "admin") {
+  if (scope === "organization") {
     return filter;
   }
 
@@ -183,7 +180,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
       vendorAddress,
       items = [],
 
-      purchaseOrderType = "material", // material / assets
+      purchaseOrderType = "material",
       validFrom,
       validTo,
       expectedDeliveryDate,
@@ -223,6 +220,17 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
 
     if (!indent) {
       return c.json({ success: false, message: "Indent not found" }, 404);
+    }
+
+    // ✅ ADD THIS
+    if (indent.supplyStatus === "Closed") {
+      return c.json(
+        {
+          success: false,
+          message: "Indent already closed. Purchase order cannot be created.",
+        },
+        400
+      );
     }
 
     if (!["Approved", "ConvertedToPO"].includes(indent.status)) {
@@ -273,8 +281,15 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
         throw new Error("itemId, unitId and orderQuantity are required");
       }
 
-      if (!indentItemMap[String(item.itemId)]) {
+      const indentItem = indentItemMap[String(item.itemId)];
+
+      if (!indentItem) {
         throw new Error("Selected item does not belong to this indent");
+      }
+
+      // ✅ ADD THIS
+      if (indentItem.supplyStatus === "Closed") {
+        throw new Error("Selected indent item already closed");
       }
 
       if (alreadyPoItemIds.has(String(item.itemId))) {
@@ -302,7 +317,7 @@ export const createPurchaseOrderFromIndent = async (c: Context) => {
         unitId: item.unitId,
         indentQuantity: Number(
           item.indentQuantity ||
-            indentItemMap[String(item.itemId)]?.quantity ||
+            indentItem?.quantity ||
             item.orderQuantity ||
             0
         ),
@@ -377,7 +392,7 @@ export const approvePurchaseOrder = async (c: Context) => {
     {
       success: false,
       message:
-        "Purchase order approval flow removed. PO is created as Approved after indent approval.",
+        "Purchase order approval flow removed. Create a gate pass and approve it to post material or assets into stock.",
     },
     400
   );
@@ -619,22 +634,25 @@ export const issueMaterialToRequester = async (c: Context) => {
 
     if (!canAccessPurchaseOrder(loggedInUser)) {
       return c.json(
-        { success: false, message: "Only admin or team scope can access purchase order" },
+        { success: false, message: "Only admin or team scope can supply material" },
         403
       );
     }
 
     const id = c.req.param("id");
+    const { items = [] } = await c.req.json();
 
     if (!isValidObjectId(id)) {
       return c.json({ success: false, message: "Invalid purchase order id" }, 400);
     }
 
-    const scopeFilter = await buildPurchaseOrderScopeFilter(loggedInUser);
+    if (!Array.isArray(items) || items.length === 0) {
+      return c.json({ success: false, message: "At least one supply item is required" }, 400);
+    }
 
-    const po = await PurchaseOrder.findOne({
+    const po: any = await PurchaseOrder.findOne({
       _id: id,
-      ...scopeFilter,
+      organizationId: loggedInUser.organizationId,
       isActive: true,
     });
 
@@ -643,55 +661,115 @@ export const issueMaterialToRequester = async (c: Context) => {
     }
 
     if (po.purchaseOrderType !== "material") {
-      return c.json(
-        { success: false, message: "Only material purchase order can be issued to requester" },
-        400
-      );
+      return c.json({ success: false, message: "Only material PO can be supplied" }, 400);
     }
 
     if (!["Received", "PartiallyReceived"].includes(po.status)) {
-      return c.json(
-        { success: false, message: "Only received material can be issued" },
-        400
-      );
+      return c.json({ success: false, message: "Only received material can be supplied" }, 400);
     }
 
-    for (const item of po.items as any[]) {
-      const receivedQty = Number(item.receivedQuantity || 0);
-      const indentQty = Number(item.indentQuantity || 0);
+    const indent: any = await Indent.findOne({
+      _id: po.indentId,
+      organizationId: loggedInUser.organizationId,
+      isActive: true,
+    });
 
-      const issueQty = Math.min(receivedQty, indentQty);
-      const extraQty = receivedQty - issueQty;
+    if (!indent) {
+      return c.json({ success: false, message: "Indent not found" }, 404);
+    }
 
-      item.issuedToRequesterQuantity = issueQty;
-      item.stockQuantity = extraQty;
+    if (indent.supplyStatus === "Closed") {
+      return c.json({ success: false, message: "Indent already closed. Supply not allowed." }, 400);
+    }
 
-      const stock = await MaterialStock.findOne({
+    for (const supplyItem of items) {
+      const itemId = supplyItem.itemId;
+      const supplyQty = Number(supplyItem.supplyQuantity || 0);
+
+      if (!itemId || supplyQty <= 0) {
+        return c.json({ success: false, message: "itemId and valid supplyQuantity are required" }, 400);
+      }
+
+      const poItem: any = po.items.find(
+        (x: any) => String(x.itemId) === String(itemId)
+      );
+
+      if (!poItem) {
+        return c.json({ success: false, message: "Item not found in PO" }, 400);
+      }
+
+      const stock: any = await MaterialStock.findOne({
         organizationId: po.organizationId,
         projectId: po.projectId,
         indentId: po.indentId,
         purchaseOrderId: po._id,
         requesterId: po.requesterId,
-        itemId: item.itemId,
-        unitId: item.unitId,
+        itemId: poItem.itemId,
+        unitId: poItem.unitId,
       });
 
-      if (stock) {
-        stock.issuedQuantity = issueQty;
-        stock.availableQuantity = extraQty;
-        stock.status = extraQty > 0 ? "Available" : "Issued";
-        await stock.save();
+      if (!stock || Number(stock.availableQuantity || 0) < supplyQty) {
+        return c.json({ success: false, message: "Not enough available stock" }, 400);
       }
+
+      const indentItem: any = indent.items.find(
+        (x: any) => String(x.itemId) === String(itemId)
+      );
+
+      if (!indentItem) {
+        return c.json({ success: false, message: "Item not found in indent" }, 400);
+      }
+
+      const requestedQty = Number(indentItem.quantity || 0);
+      const alreadySupplied = Number(indentItem.suppliedQuantity || 0);
+      const remainingQty = requestedQty - alreadySupplied;
+
+      if (supplyQty > remainingQty) {
+        return c.json({
+          success: false,
+          message: "Supply quantity cannot be greater than indent remaining quantity",
+        }, 400);
+      }
+
+      indentItem.suppliedQuantity = alreadySupplied + supplyQty;
+      indentItem.remainingQuantity = requestedQty - indentItem.suppliedQuantity;
+      indentItem.supplyStatus = indentItem.remainingQuantity <= 0 ? "Closed" : "Open";
+
+      poItem.issuedToRequesterQuantity =
+        Number(poItem.issuedToRequesterQuantity || 0) + supplyQty;
+
+      stock.issuedQuantity = Number(stock.issuedQuantity || 0) + supplyQty;
+      stock.availableQuantity = Number(stock.availableQuantity || 0) - supplyQty;
+      stock.status = stock.availableQuantity > 0 ? "Available" : "Issued";
+
+      await stock.save();
     }
 
-    po.status = "Issued";
+    const allClosed = indent.items.every(
+      (x: any) => Number(x.remainingQuantity ?? x.quantity ?? 0) <= 0 || x.supplyStatus === "Closed"
+    );
+
+    indent.supplyStatus = allClosed ? "Closed" : "PartiallySupplied";
+    await indent.save();
+
+    const allPoStockIssued = po.items.every(
+      (x: any) =>
+        Number(x.issuedToRequesterQuantity || 0) >= Number(x.indentQuantity || 0)
+    );
+
+    if (allPoStockIssued) {
+      po.status = "Issued";
+    }
+
     await po.save();
 
     const populatedPo = await populatePurchaseOrder(PurchaseOrder.findById(po._id));
 
     return c.json({
       success: true,
-      message: "Material issued to requester and extra material added to stock",
+      message: allClosed
+        ? "Material supplied successfully. Indent closed."
+        : "Material supplied successfully. Indent still open.",
       data: populatedPo,
     });
   } catch (error: any) {

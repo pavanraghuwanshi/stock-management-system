@@ -20,7 +20,20 @@ const indentItemSchema = new mongoose.Schema(
 
     price: {
       type: Number
-  }
+  },
+    suppliedQuantity: {
+    type: Number,
+    default: 0,
+  },
+  remainingQuantity: {
+    type: Number,
+    default: 0,
+  },
+  supplyStatus: {
+    type: String,
+    enum: ["Open", "Closed"],
+    default: "Open",
+  },
  },
   { _id: false }
 );
@@ -174,6 +187,11 @@ const indentSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    supplyStatus: {
+    type: String,
+    enum: ["Open", "PartiallySupplied", "Closed"],
+    default: "Open",
+  },
   },
   { timestamps: true }
 );
